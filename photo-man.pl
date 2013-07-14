@@ -26,10 +26,11 @@ use DateTime;
 use DateTime::Format::Strptime;
 use POSIX;
 use Image::ExifTool;        # Handling photo metadata
+use Data::Dumper;
 
 
 ###############################################################################
-# Global variables and default values
+# Options and arguments' default value.
 ###############################################################################
 
 # Set file system's modification timestamp to the EXIF creation date. To
@@ -48,6 +49,7 @@ my $arg_rename_template = '';
 # Sort the input file(s) based on the template given as argument.
 # TODO: template
 my $opt_sort = 0;
+my $arg_sort_op = 'move';
 my $arg_sort_template = '';
 
 # If not set, do not change/move anything only display the actions that would
@@ -94,7 +96,7 @@ if (@ARGV == 0) {
 
 
 ###############################################################################
-# Processing images
+# Global variables
 ###############################################################################
 
 # Initialise variables shared among all actions.
@@ -102,178 +104,556 @@ my $exif_tool = new Image::ExifTool;
 my $local_tz = DateTime::TimeZone->new(name => 'local');
 my $img_mtime_parser = DateTime::Format::Strptime->new(
     pattern   => '%Y:%m:%d %H:%M:%S',
-    time_zone => $arg_touch_tz);
+    time_zone => $arg_touch_tz,
+);
 
-# Print parameters.
-if ($opt_verbose) {
-    my $name_w = 10;
-    print ":: Parameters\n";
-    printf("%*s = %s\n", $name_w, 'mode', $opt_commit ? 'commit changes' : 'dry-run');
-    if ($opt_touch) {
-        printf("%*s = %s\n", $name_w, 'time zone', $arg_touch_tz);
-    }
-    if ($opt_sort) {
-        printf("%*s = %s\n", $name_w, 'template', $arg_sort_template);
-    }
-}
+# Print arguments if in verbose mode. 
+print_args() if $opt_verbose;
 
-# Processing each file
+# Initialise output formatters.
+my ( $header, $record ) = init_output();
+
+
+###############################################################################
+# Processing images
+###############################################################################
+
+# Processing each file.
 print ":: Processing images\n";
 
-# Formatting variables.
-# TODO: should be encapsulated in a formatting module.
-my $result_w = 6;
-my $filename_w = 40;
-my $touch_w = 4;
-my $sort_w = 4;
-
 # Print column header.
-if (not $opt_verbose) {
-    # result [filename]
-    printf("%*s", $result_w, '');
-    printf(" [%-*s]", $filename_w, 'filename');
-    printf(" [%*s]", $touch_w, 'time') if $opt_touch;
-    printf(" [%*s]", $sort_w, 'move') if $opt_sort;
-    print "\n";
+if ($opt_verbose) {
+    # Verbose.
+}
+else {
+    # Normal.
+    $header->next('result');
+    $header->next('filename and path');
+    $header->next('time');
+    $header->next('sort');
 }
 
+# Assemble pattern that will be used for globbing.
 my $pattern = '{' . join(',', @ARGV) . '}';
 while (my $file = glob("$pattern")) {
 
     # Print file name.
     if ($opt_verbose) {
-        print "-- $file\n";
+        $header->next("$file");
     }
     else {
-        printf("%*s", $result_w, '[    ]');
-        printf(" %-*s", $filename_w+2, $file);
+        # Leave result empty. We will fill it in later.
+        $record->next('');
+        $record->next($file);
     }
 
     # Extract metadata from image.
     my $img_meta = $exif_tool->ImageInfo("$file");
 
-    # Set modification timestamp.
+    # Set modification timestamp to EXIF creation.
     if ($opt_touch) {
-        # File system timestamp.
-        my $fs_meta = stat($file);
-        my $fs_mtime = DateTime->from_epoch(epoch     => $fs_meta->mtime,
-                                            time_zone => $local_tz);
-
-        # EXIF creation timestamp.
-        my $img_mtime = $img_mtime_parser->parse_datetime($$img_meta{'CreateDate'});
-        $img_mtime->set_formatter($img_mtime_parser);
-
-        # Set new timestamp if needed.
-        if ($img_mtime->truncate(to=>'second') ==
-            $fs_mtime->truncate(to=>'second')) {
-
-            if ($opt_verbose) {
-                print "[ -- ] timestamp unchanged\n";
-            }
-            else {
-                printf("  %*s ", $touch_w, '-- ');
-            }
-        }
-        else {
-            # Convert timestamp to local time zone. So the correct date and
-            # time is stringified when we set the file system timestamp.
-            $img_mtime->set_time_zone($local_tz);
-
-            # Print timestamp.
-            if ($opt_verbose) {
-                print "[    ] timestamp = ", $img_mtime->strftime("%F %T %z"),
-                      " (", $img_mtime->time_zone_short_name, ")";
-            }
-            else {
-                printf("  %*s ", $touch_w, 'DONE');
-            }
-
-            # Write timestamp to file if we are not making a dry-run (default).
-            if ($opt_commit) {
-                $exif_tool->SetNewValue(FileModifyDate => $img_mtime,
-                                        Protected      => 1);
-
-                if (not $exif_tool->SetFileModifyDate($file)) {
-                    print "\r[FAIL]\n";
-                    die "ERROR: failed setting file system timestamp!\n";
-                }
-            }
-
-            # Print result.
-            if ($opt_verbose) {
-                print "\r[DONE]\n";
-            }
-        }
-
+        touch({
+            file => $file,
+            img_meta => $img_meta,
+        });
     }
 
     # Sort files.
     if ($opt_sort) {
-        # Construct the new filename by applying the template and appending the
-        # original file extension to the result.
-        my $img_mtime = $img_mtime_parser->parse_datetime($$img_meta{'CreateDate'});
-        my ($ext) = $file =~ /\.([^.]+)$/;
-        my $new_file = $img_mtime->strftime($arg_sort_template) . '.' . $ext;
-
-        # Move file if current and new location are not the same.
-        if ($file ne $new_file) {
-
-            # Print new file name.
-            if ($opt_verbose) {
-                print "[    ] new path = $new_file";
-            }
-            else {
-                printf("  %*s ", $sort_w, 'DONE');
-            }
-
-            # Move/Copy the file if we are not making a dry-run (default).
-            if ($opt_commit) {
-                # Create location if it doesn't exist yet.
-                my ($nvol, $ndirs, $nfile) = File::Spec->splitpath($new_file);
-                make_path $ndirs;
-
-                # Finally, move the file.
-                if (not move($file, $new_file)) {
-                    print "\r[FAIL]\n";
-                    die "ERROR: moving file!\n$!\n"
-                }
-            }
-
-            # Print result.
-            if ($opt_verbose) {
-                print "\r[DONE]\n";
-            }
-        }
-        else {
-            # Target and source path+file are the same.
-            if ($opt_verbose) {
-                print "[ -- ] file not moved";
-            }
-            else {
-                printf("  %*s ", $sort_w, ' -- ');
-            }
-        }
-
+        sort_files({
+            file      => $file,
+            img_meta  => $img_meta,
+            operation => $arg_sort_op,
+        });
     }
 
-#    {
-#        foreach (keys %$img_meta) {
-#            print "$_ => $$img_meta{$_}\n";
-#        }
-#    }
+    # To display all EXIF metadata, uncomment the following block.
+    #foreach (keys %$img_meta) {
+    #    print "$_ => $$img_meta{$_}\n";
+    #}
 
+    # Print after processing file.
     if ($opt_verbose) {
-        print "\n";
+        # Nothing to do for verbose mode.
     }
     else {
-        print "\r[DONE]\n";
+        # Print overall result.
+        $record->next('DONE');
     }
 }
 
 
+###############################################################################
+# Auxiliary functions
+###############################################################################
+
+# Print all relevant options and arguments passed to the script.
 #
+# NOTE: This functions accesses `options and arguments' in the global scope!
+#
+# @returns    header and record output objects in this order (array)
+sub print_args {
+    # Output format.
+    my $param = Output::Columnar->new({
+            format => "@>>>>>>>>> = @<\n",
+            groups => "          ^      ",
+        });
+
+    # Mode: make changes or just show what would be done.
+    $param->next('mode');
+    $param->next( $opt_commit ? 'commit changes' : 'dry-run' );
+
+    # Timestamp fix.
+    if ($opt_touch) {
+        $param->next( 'time zone' );
+        $param->next( $arg_touch_tz );
+    }
+
+    # Moving/Copying photos to directories based on EXIF timestamp.
+    if ($opt_sort) {
+        $param->next( 'template' );
+        $param->next( $arg_sort_template );
+    }
+}
+
+
+# Initialise output by building output formatting strings and instantiating
+# output handling objects.
+#
+# NOTE: This functions accesses `options and arguments' in the global scope!
+#
+# @returns    header and record output objects in this order (array)
+sub init_output {
+    # Assemble the formatting strings based on the options passed to the
+    # script.
+    my ( $header_fmt, $header_grp, $record_fmt, $record_grp );
+
+    if ($opt_verbose) {
+        # Verbose output (vertical). Print operations/messages on their own line.
+        $header_fmt = ":: @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n";
+        $header_grp = "                                           ";
+        
+        $record_fmt = "[@|||||] @>>>>>>>>>>>> = @<<<<<<<\r[@|||||]\n";
+        $record_grp = "        ^             ^          ^           ";
+    }
+    else {
+        # Normal output (horizontal). Print operations/messages on adjecent cells
+        # on the same line.
+
+        # Base: `[result] [filename]'
+        $header_fmt = "[@|||||] [@<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<]";
+        $header_grp = "        ^                                        ";
+     
+        $record_fmt = "[@|||||] @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<";
+        $record_grp = "        ^                                        ";
+        
+        # Add timestamp fix: ` [result]'
+        if ( $opt_touch ) {
+            $header_fmt .= " [@|||||]";
+            $header_grp .= "^        ";
+
+            $record_fmt .= " @|||||||";
+            $record_grp .= "^        ";
+        }
+
+        # Add sort fix: ` [result]'
+        if ( $opt_sort ) {
+            $header_fmt .= " [@|||||]";
+            $header_grp .= "^        ";
+
+            $record_fmt .= " @|||||||";
+            $record_grp .= "^        ";
+        }
+
+        # End of record. Add line feed or overall result: `\r[result]\n'.
+        $header_fmt .= "\n";
+        $header_grp .= "  ";
+
+        $record_fmt .= "\r[@|||||]\n";
+        $record_grp .= "^           ";
+    }
+
+    # Initialise output.
+    my $header = Output::Columnar->new({
+        format => $header_fmt,
+        groups => $header_grp,
+    });
+
+    my $record = Output::Columnar->new({
+        format => $record_fmt,
+        groups => $record_grp,
+    });
+
+    # Return output objects.
+    return ( $header, $record );
+}
+
+
+# Sets the file system modification timestamp to the EXIF creation timestamp.
+#
+# @param [in] file      name of the file
+# @param [in] img_meta  EXIF metadata (hash ref)
+sub touch {
+    my ($args) = @_;
+
+    # Arguments and default values.
+    my $file = $args->{file} || die "[TOUCH] ERROR: no file specified\n";
+    my $img_meta = $args->{img_meta};
+
+    # File system timestamp.
+    my $fs_meta = stat($file);
+    my $fs_mtime = DateTime->from_epoch(epoch     => $fs_meta->mtime,
+                                        time_zone => $local_tz);
+
+    # EXIF creation timestamp.
+    my $img_mtime = $img_mtime_parser->parse_datetime($img_meta->{'CreateDate'});
+    $img_mtime->set_formatter($img_mtime_parser);
+
+    if ( $opt_verbose ) {
+        # Leave result empty. We will fill it in later.
+        $record->next('');
+    }
+    else {
+    }
+
+    # Set new timestamp if needed.
+    if ($img_mtime->truncate(to=>'second') ==
+        $fs_mtime->truncate(to=>'second')) {
+        # Timestamp is correct.
+
+        if ($opt_verbose) {
+            $record->next('timestamp unchanged');
+            $record->skip_group();
+            $record->next('--');
+        }
+        else {
+            $record->next('--');
+        }
+    }
+    else {
+        # Convert timestamp to local time zone. So the correct date and
+        # time is stringified when we set the file system timestamp.
+        $img_mtime->set_time_zone($local_tz);
+
+        # Print timestamp.
+        if ($opt_verbose) {
+            $record->next('timestamp');
+            $record->next($img_mtime->strftime("%F %T %z") .
+                   " (" . $img_mtime->time_zone_short_name . ")");
+        }
+        else {
+            $record->next('done');
+        }
+
+        # Write timestamp to file if we are not making a dry-run (default).
+        if ($opt_commit) {
+            $exif_tool->SetNewValue(FileModifyDate => $img_mtime,
+                                    Protected      => 1);
+
+            if (not $exif_tool->SetFileModifyDate($file)) {
+                print "\r[FAIL]\n";
+                die "ERROR: failed setting file system timestamp!\n";
+            }
+        }
+
+        # Print result.
+        if ($opt_verbose) {
+            $record->next('DONE');
+        }
+    }
+}
+
+sub sort_files {
+    my ($args) = @_;
+
+    # Arguments and default values.
+    my $file = $args->{file} || die "[TOUCH] ERROR: no file specified\n";
+    my $img_meta = $args->{img_meta};
+    my $op = $args->{operation};
+
+    # Construct the new filename by applying the template and appending the
+    # original file extension to the result.
+    my $img_mtime = $img_mtime_parser->parse_datetime($img_meta->{'CreateDate'});
+    my ($ext) = $file =~ /\.([^.]+)$/;
+    my $new_file = $img_mtime->strftime($arg_sort_template) . '.' . $ext;
+    
+    # Print
+    if ( $opt_verbose ) {
+        # Leave result empty. We will fill it in later.
+        $record->next('1');
+    }
+    else {
+    }
+
+    # Move file if current and new location are not the same.
+    my $force = 0;
+    if ((not -e $new_file) or $force) {
+
+        # Print new path.
+        if ($opt_verbose) {
+            $record->next('new path');
+            $record->next($new_file);
+        }
+
+        # Move/Copy the file if we are not making a dry-run (default).
+        if ($opt_commit) {
+            # Create location if it doesn't exist yet.
+            my ($nvol, $ndirs, $nfile) = File::Spec->splitpath($new_file);
+            make_path $ndirs;
+
+            # Finally, move the file.
+            # TODO: handle $op
+            if (not move($file, $new_file)) {
+                print "\r[FAIL]\n";
+                die "ERROR: moving file!\n$!\n"
+            }
+        }
+
+        # Print result.
+        if ($opt_verbose) {
+            $record->next('move');
+        }
+        else {
+            $record->next('move');
+        }
+    }
+    elsif ($file eq $new_file) {
+        # Target and source path+file are the same.
+        if ($opt_verbose) {
+            $record->next('file not moved');
+            $record->skip_group();
+            $record->next('--');
+        }
+        else {
+            $record->next('--');
+        }
+    }
+}
+
+
+###############################################################################
+# Output
+###############################################################################
+
+# An object oriented solution to print data in a columnar fashion. It differs
+# from Perl's built-in `format' by allowing the user to iteratively build the
+# output cell by cell, instead of printing complete lines.
+package Output::Columnar;
+use strict;
+use warnings;
+use diagnostics;
+use Data::Dumper;
+
+# Constructor. Creates a new object from the formatting string.
+#
+# @param [IN] $1  class being instantiated
+# @param [IN] $2  string describing the output format
+# @returns        reference to new object
+sub new {
+    my ( $class, $arg_for) = @_;
+
+    # Parameters
+    my $format_str = $arg_for->{format};
+    my $groups_str = $arg_for->{groups};
+
+    # Parse the format string describing how data should be formatted. Divides
+    # the format string into groups and parses them one by one. This produces
+    # an array of `data fields' (where user data will be filled in), literals
+    # (e.g. borders and separators), and `group boundries' (separating field
+    # groups).
+    my @fields;
+
+    # Field groups starts at this offset in format string.
+    my $start = 0;
+    while ( $groups_str =~ /
+        (?<group>
+            (\^|\A) # beginneing of line or separator
+            [^^]+   # at least one character except the separator 
+        )
+        (?=\^|\Z)   # followed the end of the line or separator 
+        /xg)
+    {
+        # Extract substring decribing the current group.
+        my $group_width = length $+{group};
+        my $group_str = substr( $format_str, $start, $group_width );
+
+        # Increment substring offset for the next group.
+        $start += $group_width;
+
+        # Parse each field in the group formatting string.
+        while ( $group_str =~ /
+            @(                    # date field:
+                (?<left>\<+)   |  #   left justified, or
+                (?<centre>\|+) |  #   centred, or
+                (?<right>\>+)     #   right justified
+            ) |                   # or
+            (?<literal>[^@]*)     # literal field
+            /xg)
+        {
+            if ( not $+{literal} ) {
+                # This is a data field.
+                foreach ( qw(left centre right) ) {
+                    # Find out which alignment we are dealing with.
+                    next if ( not $+{$_} );
+                    push @fields, {
+                        type    => 'data',
+                        justify => $_,
+                        width   => ( length $+{$_} ) + 1,
+                    };
+                }
+            }
+            else {
+                # This is a literal.
+                push @fields, { type   => 'literal',
+                                string => $+{literal} };
+            }
+        }
+
+        # Append group boundary.
+        push @fields, { type => 'stop' };
+
+    }
+
+    # Uncomment the following line to display the field array.
+    #print Data::Dumper->Dump([\@fields], [qw(fields)]);
+
+    # Return reference to new object.
+    return bless {
+        fields => \@fields,
+        pos    => 0,
+    }, $class;
+}
+
+
+# Returns the index of the next field to be printed.
+#
+# @param [in] $1  this object (implicit)
+# returns         current position
+sub get_pos {
+    my $this = shift;
+    return $this->{pos};
+}
+
+# Sets which field to be printed next. Takes care of out-of-bounds addresses by
+# setting position to point to the first field.
+#
+# @param [in] $1  this object (implicit)
+# @param [in] $2  new position
+sub set_pos {
+    my ( $this, $pos ) = @_;
+
+    if ( $pos >= $this->number_of_fields ) {
+        # Out-of-bounds, set position to zero.
+        $this->{pos} = 0;
+    }
+    else {
+        $this->{pos} = $pos;
+    }
+}
+
+
+# Increments position by the specified number or by 1 if no increment is
+# specified.
+#
+# @param [in] $1  this object (implicit)
+# @param [in] $2  increment, defaults to 1 if not specified
+# @returns        new value of position
+sub inc_pos {
+    my ( $this, $increment ) = @_;
+    $increment = 1 unless defined $increment;
+    $this->set_pos( $this->get_pos + $increment );
+    return $this->get_pos;
+}
+
+
+# Returns the `index'th field associated with this object, where `index' is an
+# arbitrary number.
+#
+# @param [in] $1  this object (implicit)
+# @param [in] $2  index of desired field
+# @returns        `$index'th field (hash ref)
+sub get_field {
+    my ( $this, $index ) = @_;
+    return $this->{fields}->[$index];
+}
+
+
+# Returns the field at the current position and increments the `position' so
+# that every time you call this method you will automatically get the next
+# field without explicitely incrementing `position'.
+#
+# @returns  (hash ref)
+sub get_next_field {
+    my $this = shift;
+
+    # Store next field, increment position and return the field.
+    my $next_field = $this->get_field( $this->get_pos );
+    $this->inc_pos;
+    return $next_field;
+
+}
+
+# Returns the number of fields associated with this output format.
+sub number_of_fields {
+    my $this = shift;
+    return scalar @{$this->{fields}};
+}
+
+# Prints the fields, potentially interpolated with the specified message,
+# before the next stop control field.
+#
+# @param [IN] $1  object being dereferenced
+# @param [IN] $2  message to substiture into the next data field
+sub next {
+    my ( $this, $message ) = @_;
+
+    # Print output fields until we hit a stop field.
+    while ( (my $field = $this->get_next_field)->{type} ne 'stop' ) {
+
+#        print "\nFIELD[", $this->get_pos - 1, "] // ", Data::Dumper->Dump([$field], [qw(field)]);
+
+        if ( $field->{type} eq 'data' ) {
+            # Data field. Format it according to it's alignement.
+            my $field_width = $field->{width};
+            if ( $field->{justify} ne 'centre' ) {
+                # Left/Right alignment.
+                my $alignment = ($field->{justify} eq 'left') ? '-' : '';
+                printf( "%${alignment}${field_width}s", $message );
+            }
+            else {
+                # Centre alignment. We pad the text with spaces on both sides.
+                my $message_width = length $message;
+                my $left_pad = int( ($field_width - $message_width) / 2 );
+                my $right_pad = $field_width - ($message_width + $left_pad);
+                printf( "%${left_pad}s%s%${right_pad}s", '', $message, '' );
+            }
+        }
+        elsif ( $field->{type} eq 'literal' ) {
+            # Literal field. Print it without formatting.
+            printf( $field->{string} );
+        }
+    }
+}
+
+
+# Skips to the next `field group'. This effectively skips the output formatting
+# fields until the next `stop field'.
+sub skip_group {
+    my $this = shift;
+
+    my $pos = $this->get_pos();
+    my $fields = $this->{fields};
+    while ( $fields->[$pos]->{type} ne 'stop' ) {
+        ++$pos;
+    }
+    $this->set_pos(++$pos);
+
+}
+
+
+###############################################################################
 # Usage information
-#
+###############################################################################
 
 __END__
 
