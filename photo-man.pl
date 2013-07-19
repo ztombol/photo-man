@@ -11,14 +11,18 @@
 # Licence: ?
 #
 
-
 use strict;
 use warnings;
 use diagnostics;
 
+use lib 'lib';
+
+use TCO::Output::Columnar::Factory;
+
 use Getopt::Long;           # Option parsing
 use Pod::Usage;             # Printing usage information
 use File::Glob ':bsd_glob'; # Producing file names
+use File::Find::Rule;
 use File::stat;             # Accessing filesystem metadata
 use File::Copy;
 use File::Path 'make_path';
@@ -49,7 +53,7 @@ my $arg_rename_template = '';
 # Sort the input file(s) based on the template given as argument.
 # TODO: template
 my $opt_sort = 0;
-my $arg_sort_op = 'move';
+my $arg_sort_op = 'copy';
 my $arg_sort_template = '';
 
 # Force destructive operations, e.g. move/copy when target exists.
@@ -187,7 +191,7 @@ while (my $file = glob("$pattern")) {
 # @returns    header and record output objects in this order (array)
 sub print_args {
     # Output format.
-    my $param = Output::Columnar->new({
+    my $param = TCO::Output::Columnar::Factory->new({
         format => "@>>>>>>>>> = @<\n",
         groups => "          ^      ",
     });
@@ -274,12 +278,12 @@ sub init_output {
     }
 
     # Initialise output.
-    my $header = Output::Columnar->new({
+    my $header = TCO::Output::Columnar::Factory->new({
         format => $header_fmt,
         groups => $header_grp,
     });
 
-    my $record = Output::Columnar->new({
+    my $record = TCO::Output::Columnar::Factory->new({
         format => $record_fmt,
         groups => $record_grp,
     });
@@ -361,6 +365,7 @@ sub touch {
         }
     }
 }
+
 
 # Sort a photo. In this context, sorting means the sorting of a photo album by
 # moving or copying each photo to a specified location potentially based on
@@ -473,7 +478,13 @@ sub _do_sort {
         }
     }
     elsif ($op eq 'copy') {
-        die "TODO: implement copy";
+        # TODO: this will mess up the timestamp, we need to:
+        #   1.) do sort first and then fix the timestamp, or
+        #   2.) find a way to copy while preserving metadata
+	# FIXME: does not seem to copy.
+	if ( not copy($file, $new_file) ) {
+            return 1;
+        }
     }
     else {
         # Unrecognised operation.
@@ -482,226 +493,6 @@ sub _do_sort {
 
     # Operation sucessfully executed.
     return 0;
-}
-
-
-###############################################################################
-# Output
-###############################################################################
-
-# An object oriented solution to print data in a columnar fashion. It differs
-# from Perl's built-in `format' by allowing the user to iteratively build the
-# output cell by cell, instead of printing complete lines.
-package Output::Columnar;
-use strict;
-use warnings;
-use diagnostics;
-use Data::Dumper;
-
-# Constructor. Creates a new object from the formatting string.
-#
-# @param [IN] $1  class being instantiated
-# @param [IN] $2  string describing the output format
-# @returns        reference to new object
-sub new {
-    my ( $class, $arg_for) = @_;
-
-    # Parameters
-    my $format_str = $arg_for->{format};
-    my $groups_str = $arg_for->{groups};
-
-    # Parse the format string describing how data should be formatted. Divides
-    # the format string into groups and parses them one by one. This produces
-    # an array of `data fields' (where user data will be filled in), literals
-    # (e.g. borders and separators), and `group boundries' (separating field
-    # groups).
-    my @fields;
-
-    # Field groups starts at this offset in format string.
-    my $start = 0;
-    while ( $groups_str =~ /
-        (?<group>
-            (\^|\A) # beginneing of line or separator
-            [^^]+   # at least one character except the separator 
-        )
-        (?=\^|\Z)   # followed the end of the line or separator 
-        /xg)
-    {
-        # Extract substring decribing the current group.
-        my $group_width = length $+{group};
-        my $group_str = substr( $format_str, $start, $group_width );
-
-        # Increment substring offset for the next group.
-        $start += $group_width;
-
-        # Parse each field in the group formatting string.
-        while ( $group_str =~ /
-            @(                    # date field:
-                (?<left>\<+)   |  #   left justified, or
-                (?<centre>\|+) |  #   centred, or
-                (?<right>\>+)     #   right justified
-            ) |                   # or
-            (?<literal>[^@]*)     # literal field
-            /xg)
-        {
-            if ( not $+{literal} ) {
-                # This is a data field.
-                foreach ( qw(left centre right) ) {
-                    # Find out which alignment we are dealing with.
-                    next if ( not $+{$_} );
-                    push @fields, {
-                        type    => 'data',
-                        justify => $_,
-                        width   => ( length $+{$_} ) + 1,
-                    };
-                }
-            }
-            else {
-                # This is a literal.
-                push @fields, { type   => 'literal',
-                                string => $+{literal} };
-            }
-        }
-
-        # Append group boundary.
-        push @fields, { type => 'stop' };
-
-    }
-
-    # Uncomment the following line to display the field array.
-    #print Data::Dumper->Dump([\@fields], [qw(fields)]);
-
-    # Return reference to new object.
-    return bless {
-        fields => \@fields,
-        pos    => 0,
-    }, $class;
-}
-
-
-# Returns the index of the next field to be printed.
-#
-# @param [in] $1  this object (implicit)
-# returns         current position
-sub get_pos {
-    my $this = shift;
-    return $this->{pos};
-}
-
-# Sets which field to be printed next. Takes care of out-of-bounds addresses by
-# setting position to point to the first field.
-#
-# @param [in] $1  this object (implicit)
-# @param [in] $2  new position
-sub set_pos {
-    my ( $this, $pos ) = @_;
-
-    if ( $pos >= $this->number_of_fields ) {
-        # Out-of-bounds, set position to zero.
-        $this->{pos} = 0;
-    }
-    else {
-        $this->{pos} = $pos;
-    }
-}
-
-
-# Increments position by the specified number or by 1 if no increment is
-# specified.
-#
-# @param [in] $1  this object (implicit)
-# @param [in] $2  increment, defaults to 1 if not specified
-# @returns        new value of position
-sub inc_pos {
-    my ( $this, $increment ) = @_;
-    $increment = 1 unless defined $increment;
-    $this->set_pos( $this->get_pos + $increment );
-    return $this->get_pos;
-}
-
-
-# Returns the `index'th field associated with this object, where `index' is an
-# arbitrary number.
-#
-# @param [in] $1  this object (implicit)
-# @param [in] $2  index of desired field
-# @returns        `$index'th field (hash ref)
-sub get_field {
-    my ( $this, $index ) = @_;
-    return $this->{fields}->[$index];
-}
-
-
-# Returns the field at the current position and increments the `position' so
-# that every time you call this method you will automatically get the next
-# field without explicitely incrementing `position'.
-#
-# @returns  (hash ref)
-sub get_next_field {
-    my $this = shift;
-
-    # Store next field, increment position and return the field.
-    my $next_field = $this->get_field( $this->get_pos );
-    $this->inc_pos;
-    return $next_field;
-
-}
-
-# Returns the number of fields associated with this output format.
-sub number_of_fields {
-    my $this = shift;
-    return scalar @{$this->{fields}};
-}
-
-# Prints the fields, potentially interpolated with the specified message,
-# before the next stop control field.
-#
-# @param [IN] $1  object being dereferenced
-# @param [IN] $2  message to substiture into the next data field
-sub next {
-    my ( $this, $message ) = @_;
-
-    # Print output fields until we hit a stop field.
-    while ( (my $field = $this->get_next_field)->{type} ne 'stop' ) {
-
-#        print "\nFIELD[", $this->get_pos - 1, "] // ", Data::Dumper->Dump([$field], [qw(field)]);
-
-        if ( $field->{type} eq 'data' ) {
-            # Data field. Format it according to it's alignement.
-            my $field_width = $field->{width};
-            if ( $field->{justify} ne 'centre' ) {
-                # Left/Right alignment.
-                my $alignment = ($field->{justify} eq 'left') ? '-' : '';
-                printf( "%${alignment}${field_width}s", $message );
-            }
-            else {
-                # Centre alignment. We pad the text with spaces on both sides.
-                my $message_width = length $message;
-                my $left_pad = int( ($field_width - $message_width) / 2 );
-                my $right_pad = $field_width - ($message_width + $left_pad);
-                printf( "%${left_pad}s%s%${right_pad}s", '', $message, '' );
-            }
-        }
-        elsif ( $field->{type} eq 'literal' ) {
-            # Literal field. Print it without formatting.
-            printf( $field->{string} );
-        }
-    }
-}
-
-
-# Skips to the next `field group'. This effectively skips the output formatting
-# fields until the next `stop field'.
-sub skip_group {
-    my $this = shift;
-
-    my $pos = $this->get_pos();
-    my $fields = $this->{fields};
-    while ( $fields->[$pos]->{type} ne 'stop' ) {
-        ++$pos;
-    }
-    $this->set_pos(++$pos);
-
 }
 
 
