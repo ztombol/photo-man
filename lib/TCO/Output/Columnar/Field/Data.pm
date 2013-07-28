@@ -5,9 +5,9 @@
 package TCO::Output::Columnar::Field::Data;
 
 use Moose;
-use MooseX::FollowPBP;
 use namespace::autoclean;
-#use overload '""' => 'as_string';
+use MooseX::FollowPBP;
+use MooseX::StrictConstructor;
 use Carp 'croak';
 
 extends 'TCO::Output::Columnar::Field';
@@ -35,13 +35,15 @@ has 'alignment' => (
 around BUILDARGS => sub {
     my $orig  = shift;
     my $class = shift;
+    my $type = 'data';
 
-    if ( @_ == 2 && !ref $_[0] ) {
-        return $class->$orig( alignment => $_[0],
-                              width     => $_[1] );
-    }
-    else {
-        return $class->$orig( @_ );
+    if ( @_ == 1 && ref $_[0] ) {
+        my $arg_for = shift;
+        return $class->$orig(
+            type      => $type,
+            alignment => $arg_for->{alignment},
+            width     => $arg_for->{width},
+        );
     }
 };
 

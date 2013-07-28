@@ -1,0 +1,86 @@
+=pod
+
+=head1 NAME
+
+photo-man.pl - Simple photo library management script
+
+=head1 VERSION
+
+VERSION 0.1
+
+=head1 SYNOPSIS
+
+photo-man.pl [OPTIONS] (FILE... | REGEX)
+
+=head1 DESCRIPTION
+
+photo-man is a utility to make a few photo library maintenance task easier on
+the Linux platform.
+
+It can correct the filesystem's modification timestamp by setting it to the
+creation date found in the photo's EXIF metadata, which is extracted using the
+excellent L<Image::ExifTool> module (see http://sno.phy.queensu.ca/~phil/exiftool/).
+
+It also enables sorting large amount of photo's based on their creation time
+stamp.
+
+=head1 ARGUMENTS
+
+The script takes one or more files as arguments. Files can be specified by
+listing each one as an additional argument or using a regular expression. The
+order of processing is determined by the system's locale. 
+
+=head1 OPTIONS
+
+Mandatory arguments to short options are mandatory for long options as well.
+
+=over
+
+=item -t, --touch=TIME_ZONE
+
+Set the file system's modification timestamp to the EXIF creation timestamp.
+Since EXIF can not handle time zone information, the original time zone in
+which the photo was taken has to be manually specified.
+
+=item -m, --move=PATTERN
+
+Move input files based on a user specified PATTERN, which is a
+L<strtime pattern|DateTime/"strftime Patterns"> from the L<DateTime> module.
+For example:
+
+    photo-man -m '%Y.%m' *.jpeg
+
+will move all images with jpeg extension in the current directory to
+directories that consist of the year, a dot and the month in which the photo
+was taken.
+
+    image-1.jpeg   2013-07-21 16:21:43  ->  2013.07/image-1.jpeg
+    image-2.jpeg   2013-06-30 08:32:00  ->  2013.06/image-2.jpeg
+    image-3.jpeg   2013-07-18 11:44:05  ->  2013.07/image-3.jpeg
+
+=item -c, --commit
+
+Make changes. By default the program just makes a dry-run and outputs what
+would be changed.
+
+=item -f, --force
+
+Force execution of destructive operations, including overwriting files while
+moving or renaming. By default irreversible operations are skipped and
+reported.
+
+=item -v, --verbose
+
+Produce verbose output.
+
+=item -h, --help
+
+Display usage information and exit.
+
+=item --man
+
+Display the whole documentation and exit.
+
+=back
+
+=cut

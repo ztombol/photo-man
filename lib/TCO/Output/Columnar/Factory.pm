@@ -4,6 +4,7 @@
 
 package TCO::Output::Columnar::Factory;
 
+use v5.14; # given/when
 use Moose;
 use MooseX::FollowPBP;
 use namespace::autoclean;
@@ -18,10 +19,11 @@ $VERSION = eval $VERSION;
 
 # Array of output fields.
 has 'fields' => ( 
-    is       => 'ro',
+    is       => 'rw',
     isa      => 'ArrayRef',
     required => 1,
     reader   => '_get_fields',
+    writer   => '_set_fields',
 );
 
 # Index of field to print next.
@@ -48,7 +50,7 @@ around BUILDARGS => sub {
 
     my $arg_for;
 
-    if ( @_ == 1 ) {
+    if ( @_ == 1 && ref $_[0] ) {
         # Hashref
         $arg_for = $_[0];
     } else {
@@ -58,7 +60,7 @@ around BUILDARGS => sub {
     }
 
     my $format  = $arg_for->{format};
-    my $control = $arg_for->{groups};
+    my $control = $arg_for->{control} || ' ' x length $format;
 
     my $fields_ref = $class->_initialise( $format, $control );
     return $class->$orig( fields => $fields_ref );
@@ -73,7 +75,7 @@ sub _initialise {
     my $class = shift;
 
     my $format_str = shift;
-    my $groups_str = shift;
+    my $control_str = shift;
 
     # Parse the format string describing how data should be formatted. Divides
     # the format string into groups and parses them one by one. This produces
@@ -84,7 +86,7 @@ sub _initialise {
 
     # Field groups starts at this offset in format string.
     my $start = 0;
-    while ( $groups_str =~ /
+    while ( $control_str =~ /
         (?<group>
             (\^|\A) # beginneing of line or separator
             [^^]+   # at least one character except the separator 
@@ -142,10 +144,68 @@ sub _initialise {
     return \@fields;
 }
 
+# Appends additional fields to the output object.
+#
+# FIXME: If you have already used the object to output fields, one field will
+#        be skipped.
+sub append_stop {
+    my $self = shift;
+
+    my $arg_for;
+
+    if ( @_ == 1 && ref $_[0] ) {
+        # Hashref
+        $arg_for = $_[0];
+    } else {
+        # Hash
+#        my ( %arg ) = @_;
+#        my $arg_for = \%arg;
+    }
+
+    my $format  = $arg_for->{format};
+    my $control = $arg_for->{control} || ' ' x length $format;
+
+    # Produce new fields.
+    my $fields_ref = $self->_initialise( $format, $control );
+
+    # Add new fields.
+    push @{$self->_get_fields}, @{$fields_ref};
+}
+
+# Same as append, but it also removes the trailing stop before appending the
+# new fields.
+sub append {
+    my $self = shift;
+    
+    my $arg_for;
+
+    if ( @_ == 1 && ref $_[0] ) {
+        # Hashref
+        $arg_for = $_[0];
+    } else {
+        # Hash
+#        my ( %arg ) = @_;
+#        my $arg_for = \%arg;
+    }
+
+    my $format  = $arg_for->{format};
+    my $control = $arg_for->{control} || ' ' x length $format;
+
+    $self->remove_last_stop;
+    $self->append_stop({
+        format  => $format,
+        control => $control,
+    });
+}
+
+sub remove_last_stop {
+    my $self = shift;
+    pop $self->_get_fields;
+}
 
 # Returns the field at the current position and increments the `position' so
 # that every time you call this method you will automatically get the next
-# field without explicitely incrementing `position'.
+# field to process without explicitely incrementing `position'.
 #
 # @returns  (hash ref)
 sub _get_next_field {
@@ -156,44 +216,45 @@ sub _get_next_field {
     return $this->_get_fields->[$position];
 }
 
-sub _is_stop {
-    my $self = shift;
-    my $field = shift;
 
-    return $field->isa('TCO::Output::Columnar::Field::Stop');
-}
+# Prints output fields until it hits the first stop or data field after
+# consuming the last data item.
+sub print {
+    my ( $self, @data_arr ) = @_;
 
-# Prints the fields, potentially interpolated with the specified message,
-# before the next stop control field.
-#
-# @param [IN] $1  object being dereferenced
-# @param [IN] $2  message to substiture into the next data field
-sub next {
-    my ( $this, $data ) = @_;
+    while ( 1 ) {
+        my $field = $self->_get_next_field;
 
-    # Print output fields until we hit a stop field.
-    while ( not $this->_is_stop( my $field = $this->_get_next_field ) ) {
-
-        # Uncomment the following block to dump the current field.
-        #{
-        #    require Data::Dumper;
-        #    print "\nFIELD[", $this->_get_position - 1, "] // ", Data::Dumper->Dump([$field], [qw(field)]);
-        #}
-
-        # TODO: literal fields do not need the parameter
-        print $field->as_string($data);
+        if ( $field->get_type eq 'data' ) {
+            if (! @data_arr) {
+                # Stop here if we do not have any more data to feed into the
+                # next data field.
+                # TODO: this is ugly
+                $self->_set_position( $self->_get_position - 1);
+                last;
+            }
+            print $field->as_string( shift @data_arr );
+        }
+        elsif ( $field->get_type eq 'literal' ) {
+            print $field->as_string();
+        }
+        elsif ( $field->get_type eq 'stop' && ! @data_arr) {
+            # We hit a stop field and there is no more data to print so let's
+            # stop here.
+            # TODO: this is ugly
+            $self->_set_position( $self->_get_position - 1);
+            last;
+        }
     }
 }
 
-
-# Skips to the next `field group'. This effectively skips the output formatting
-# fields until the next `stop field'.
-sub skip_group {
-    my $this = shift;
-    while ( not $this->_is_stop( $this->_get_next_field ) ) {}
+# Reset to the beginning of the field array and print a line feed.
+sub reset {
+    my $self = shift;
+    $self->_set_position( 0 );
+    print "\n";
 }
 
 __PACKAGE__->meta->make_immutable;
 
 1;
-

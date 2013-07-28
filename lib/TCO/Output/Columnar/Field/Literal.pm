@@ -24,12 +24,14 @@ has 'string' => (
 around BUILDARGS => sub {
     my $orig  = shift;
     my $class = shift;
+    my $type = 'literal';
 
-    if ( @_ == 1 && !ref $_[0] ) {
-        return $class->$orig( string => $_[0] );
-    }
-    else {
-        return $class->$orig( @_ );
+    if ( @_ == 1 && ref $_[0] ) {
+        my $arg_for = shift;
+        return $class->$orig(
+            type   => $type,
+            string => $arg_for->{string},
+        );
     }
 };
 

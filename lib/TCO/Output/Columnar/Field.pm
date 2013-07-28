@@ -10,6 +10,12 @@ use namespace::autoclean;
 our $VERSION = '0.1';
 $VERSION = eval $VERSION;
 
+has 'type' => (
+    is     => 'ro',
+    isa    => 'Str',
+    reader => 'get_type',
+);
+
 __PACKAGE__->meta->make_immutable;
 
 1;
