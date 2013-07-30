@@ -4,8 +4,10 @@
 package TCO::Output::Columnar::Field;
 
 use Moose;
+use MooseX::StrictConstructor;
 use MooseX::FollowPBP;
 use namespace::autoclean;
+use Carp;
 
 our $VERSION = '0.1';
 $VERSION = eval $VERSION;
@@ -13,7 +15,6 @@ $VERSION = eval $VERSION;
 has 'type' => (
     is     => 'ro',
     isa    => 'Str',
-    reader => 'get_type',
 );
 
 __PACKAGE__->meta->make_immutable;

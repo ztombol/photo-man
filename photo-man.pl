@@ -21,23 +21,11 @@ use TCO::Output::Columnar::Factory;
 use TCO::Image::File;
 use TCO::Image::PhotoMan;
 
-use v5.14;
-use Carp;
-use File::Compare;
-
+use v5.14;                  # given/when
+use Carp;                   # Error reporting
 use Getopt::Long;           # Option parsing
 use Pod::Usage;             # Printing usage information
-use File::Spec;
 use File::Glob ':bsd_glob'; # Producing file names
-use File::Find::Rule;
-use File::stat;             # Accessing filesystem metadata
-use File::Copy;
-use File::Path 'make_path';
-use DateTime;
-use DateTime::Format::Strptime;
-use POSIX;
-use Image::ExifTool;        # Handling photo metadata
-use Data::Dumper;
 
 
 ###############################################################################
@@ -52,31 +40,39 @@ use Data::Dumper;
 my $opt_touch = 0;
 my $arg_touch_tz = '';
 
-# Rename the input file(s) based on the template given as argument. The
-# template can contain TODO.
+# Move the input file(s) according to a template describing the new location.
+# The template can reference parts of the creation date of the image.
+# Directories are created as necessary and the filenames are preserved.
+# FIXME: Why do we need to escape %s? \%M instead of %M.
+my $opt_move = 0;
+my $arg_move_template = '';
+
+# Rename the input file(s) according to a template describing the new file
+# name(s). The template can reference parts of the creation date of the image.
+# Files are renamed but not moved.
+# FIXME: Why do we need to escape %s? \%M instead of %M.
 my $opt_rename = 0;
 my $arg_rename_template = '';
 
-# Sort the input file(s) based on the template given as argument.
-# TODO: template
-my $opt_move = 0;
-my $arg_move_op = 'copy';
-my $arg_move_template = '';
+# Force destructive operations, e.g. overwrting files in move and rename
+# operations.
+my $opt_forced = 0;
 
-# Force destructive operations, e.g. move/copy when target exists.
-my $opt_force = 0;
-
-# If not set, do not change/move anything only display the actions that would
-# be taken if we were to do it for real.
+# If not set, do not make any changes just display what would have be done.
+# Only commit the displayed changes if this flag is set to 1. By default the
+# program will make a dry-run.
 my $opt_commit = 0;
 
 # Print help information.
 my $opt_help = 0;
+
+# Print the complete documentation.
 my $opt_man  = 0;
 
-# Set verbosity level.
+# If set, the program will produce detailed output about the operations being
+# done. One operation a line. If not set, only basic information is displayed.
+# One operation a column. By default short output is produced.
 my $opt_verbose = 0;
-
 
 
 ###############################################################################
@@ -88,7 +84,7 @@ my $parser = Getopt::Long::Parser->new;
 $parser->getoptions('touch=s' => \&handler_touch,
                     'move=s'  => \&handler_move,
                     'commit'  => \$opt_commit,
-                    'force'   => \$opt_force,
+                    'force'   => \$opt_forced,
                     'verbose' => \$opt_verbose,
                     'help'    => \$opt_help,
                     'man'     => \$opt_man,) or pod2usage(2);
@@ -106,41 +102,33 @@ sub handler_touch {
     $arg_touch_tz = shift;
 }
 
-# Help + Man
+# Displaying help or complete documentation.
 pod2usage( -input => 'docs.pod', -verbose => 1) if $opt_help;
 pod2usage( -input => 'docs.pod', -verbose => 2, -exitval => 0) if $opt_man;
 
-# Check imput files.
+# Check input files.
 pod2usage( -input => 'docs.pod', -verbose => 2,
            -message => "$0: No input files are specified.") if (@ARGV == 0 && -t STDIN);
 
 
 ###############################################################################
-# Global variables
+# Main
 ###############################################################################
-
-# Initialise variables shared among all actions.
-
-# Print arguments if in verbose mode. 
-print_args() if $opt_verbose;
 
 # Initialise output formatters.
 my ( $header, $record ) = init_output();
 
+# Print arguments if in verbose mode. 
+print_args() if $opt_verbose;
 
-###############################################################################
-# Processing images
-###############################################################################
-
+# Create Photo Manager instance.
+my $pm = TCO::Image::PhotoMan->new({
+    commit => $opt_commit,
+    forced => $opt_forced,
+});
 
 # Processing each file.
 print ":: Processing images\n";
-
-# Create Photo Manager instance.
-my $pm = TCO::Image::PhotoMan->new(
-    do_commit => $opt_commit,
-    is_forced => $opt_force,
-);
 
 # Print column header.
 if ($opt_verbose) { }
@@ -171,8 +159,7 @@ while (my $file = glob("$pattern")) {
 
         # Output
         if ( $opt_verbose ) {
-            # when/given uses smartmatch which is experimental, lets switch it
-            # off.
+            # Turn of warnings to avoid messages from when/given.
             no warnings;
             for ($status) {
                 $record->print('file moved to', $new_path)        when 0; 
@@ -187,8 +174,7 @@ while (my $file = glob("$pattern")) {
             }
         }
         else {
-            # when/given uses smartmatch which is experimental, lets switch it
-            # off.
+            # Turn of warnings to avoid messages from when/given.
             no warnings;
             for ($status) {
                 $record->print('move') when 0; 
@@ -243,6 +229,27 @@ while (my $file = glob("$pattern")) {
     else                { $record->print('done'); }
 }
 
+# Print summary
+if ($opt_verbose) {
+    # TODO: print summary, number of moved files etc.
+    #print ":: Summary\n";
+}
+
+# Warn if it was just a dry run
+if (not $opt_commit) {
+    print <<"WARNING";
+:: Warning
+
+!!! HEADS-UP !!!
+
+This was just a dry-run! If you want to make the above mentioned changes
+specify the `--commit' option in addition on the command line!
+
+    \$ $0 --commit ...
+
+WARNING
+}
+
 
 ###############################################################################
 # Auxiliary functions
@@ -264,7 +271,7 @@ sub print_args {
 
     # Forced: perform destructive and irreversible operations, e.g. overwriting
     # files while moving.
-    $param->print('forced', $opt_force ? 'yes' : 'no');
+    $param->print('forced', $opt_forced ? 'yes' : 'no');
 
     # Timestamp fix.
     $param->print('time zone', $arg_touch_tz) if $opt_touch;

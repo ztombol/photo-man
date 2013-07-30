@@ -3,13 +3,14 @@
 package TCO::Image::File;
 
 use Moose;
+use MooseX::StrictConstructor;
 use MooseX::FollowPBP;
 use namespace::autoclean;
+use Carp;
 
 use Image::ExifTool;
 use File::Copy;
 use File::Path qw(make_path);
-#use Carp;
 
 our $VERSION = '0.1';
 $VERSION = eval $VERSION;
@@ -28,65 +29,49 @@ has 'path' => (
 has 'metadata' => (
     is       => 'rw',
     isa      => 'Ref',
-    required => 1,
     reader   => 'get_metadata',
     writer   => '_set_metadata',
+    lazy     => 1,
+    builder  => '_load_metadata',
 );
-
 
 around BUILDARGS => sub {
     my $orig = shift;
     my $class = shift;
 
-    my $path;
-    my $read_only;
-
-    if ( @_ == 1 && ref $_[0] ) {
-        # Hashref.
-        my $arg_for = shift;
-
-        $path = $arg_for->{path};
-    }
-    else {
-        # Parameter list.
-        $path = shift;
+    if ( not (@_ == 1 && ref $_[0]) ) {
+        croak "Error: constructor requires a hashref of attributes!";
     }
 
-    # Retrieve metadata.
-    my $metadata = $class->_initialise( $path );
-
-    return $class->$orig(
-        path         => $path,
-        metadata     => $metadata,
-    );
+    return $class->$orig( @_ );
 };
 
-sub _initialise {
-    my $class = shift;
-    my $path = shift;
+# Builder method to load metadata.
+sub _load_metadata {
+    local $_;
+    my $self = shift;
 
     # Extract metadata.
     my $exif_tool = new Image::ExifTool;
-    my $exif_meta = $exif_tool->ImageInfo( $path );
+    my $exif_meta = $exif_tool->ImageInfo( $self->get_path );
 
     return $exif_meta;
 }
 
+# Trigger method to reload metadata. Used when path is changed.
 sub _reload_metadata {
-    my $self = shift;
-    my $path = shift;
-
-    $self->_set_metadata( $self->_initialise($path) );
+    my ( $self, $new_path, $old_path ) = @_;
+    $self->_set_metadata( $self->_load_metadata($new_path) );
 }
-
 
 # Moves the file to a new location. Also creates the directories leading up to
 # the destination if they do not exist yet. The operation is executed only if
 # the the image is not in `read only' mode, in which case success is returned
 # immediately. This behaviour is implemented to support dry-run mode.
 #
-# @param [in] $self    file to move (source)
-# @param [in] $target  new path including filename (destination)
+# @param [in] self    file to move (source)
+# @param [in] target  new path including filename (destination)
+#
 # @returns  0 on success,
 #           1 otherwise
 sub move_file {

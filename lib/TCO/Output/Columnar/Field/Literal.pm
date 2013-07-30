@@ -4,8 +4,10 @@
 package TCO::Output::Columnar::Field::Literal;
 
 use Moose;
+use MooseX::StrictConstructor;
 use MooseX::FollowPBP;
 use namespace::autoclean;
+use Carp;
 
 extends 'TCO::Output::Columnar::Field';
 
@@ -22,17 +24,19 @@ has 'string' => (
 
 # Allow non-hash(ref) calling style.
 around BUILDARGS => sub {
-    my $orig  = shift;
+    my $orig = shift;
     my $class = shift;
     my $type = 'literal';
 
-    if ( @_ == 1 && ref $_[0] ) {
-        my $arg_for = shift;
-        return $class->$orig(
-            type   => $type,
-            string => $arg_for->{string},
-        );
+    if ( not (@_ == 1 && ref $_[0]) ) {
+        croak "Error: constructor requires a hashref of attributes!";
     }
+    
+    my $arg_for = shift;
+    return $class->$orig(
+        type   => $type,
+        string => $arg_for->{string},
+    );
 };
 
 # Produces string representation of field.

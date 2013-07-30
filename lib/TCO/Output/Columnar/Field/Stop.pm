@@ -5,8 +5,10 @@
 package TCO::Output::Columnar::Field::Stop;
 
 use Moose;
+use MooseX::StrictConstructor;
 use MooseX::FollowPBP;
 use namespace::autoclean;
+use Carp;
 
 extends 'TCO::Output::Columnar::Field';
 
@@ -18,12 +20,9 @@ around BUILDARGS => sub {
     my $class = shift;
     my $type = 'stop';
 
-#    if ( @_ == 1 && ref $_[0] ) {
-#        my $arg_for = shift;
-        return $class->$orig(
-            type      => $type,
-        );
-#    }
+    return $class->$orig(
+        type => $type,
+    );
 };
 
 __PACKAGE__->meta->make_immutable;
