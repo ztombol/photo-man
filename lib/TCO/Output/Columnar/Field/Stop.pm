@@ -20,6 +20,10 @@ around BUILDARGS => sub {
     my $class = shift;
     my $type = 'stop';
 
+    if ( @_ != 0 ) {
+        croak "Error: constructor requires no parameters!";
+    }
+
     return $class->$orig(
         type => $type,
     );
@@ -28,4 +32,3 @@ around BUILDARGS => sub {
 __PACKAGE__->meta->make_immutable;
 
 1;
-

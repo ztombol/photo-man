@@ -22,7 +22,6 @@ has 'string' => (
     reader   => '_get_string',
 );
 
-# Allow non-hash(ref) calling style.
 around BUILDARGS => sub {
     my $orig = shift;
     my $class = shift;
@@ -48,4 +47,3 @@ sub as_string {
 __PACKAGE__->meta->make_immutable;
 
 1;
-

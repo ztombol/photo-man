@@ -15,10 +15,12 @@ extends 'TCO::Output::Columnar::Field';
 our $VERSION = '0.1';
 $VERSION = eval $VERSION;
 
+use TCO::Output::Columnar::Types;
+
 # Number of characters the field can occupy.
 has 'width' => (
     is       => 'ro',
-    isa      => 'Int',
+    isa      => 'TCO::Output::Columnar::Types::FieldWidth',
     required => 1,
     reader   => '_get_width',
 );
@@ -26,41 +28,25 @@ has 'width' => (
 # Alignment of the printed data. Can be `left', `right' or `centre'.
 has 'alignment' => (
     is       => 'ro',
-    isa      => 'Str',
+    isa      => 'TCO::Output::Columnar::Types::FieldAlignment',
     required => 1,
     reader   => '_get_alignment',
 );
 
-# Allow non-hash(ref) calling style.
 around BUILDARGS => sub {
     my $orig  = shift;
     my $class = shift;
     my $type = 'data';
 
-    if ( @_ == 1 && ref $_[0] ) {
-        my $arg_for = shift;
-        return $class->$orig(
-            type      => $type,
-            alignment => $arg_for->{alignment},
-            width     => $arg_for->{width},
-        );
+    if ( not (@_ == 1 && ref $_[0]) ) {
+        croak "Error: constructor requires a hashref of attributes!";
     }
+
+    my $arg_for = shift;
+    $arg_for->{type} = $type;
+    
+    return $class->$orig( $arg_for );
 };
-
-# Validate created object.
-sub BUILD {
-    my $self = shift;
-
-    # Width.
-    if ( not $self->_get_width > 0 ) {
-        croak("Width must be an integer greater than 0");
-    }
-
-    # Alignment.
-    if ( not grep { $self->_get_alignment eq $_ } qw(left centre right) ) {
-        croak("Alignment must be one of `left', `centre' or `right'");
-    }
-}
 
 # Produces string representation of field.
 sub as_string {
@@ -84,4 +70,3 @@ sub as_string {
 __PACKAGE__->meta->make_immutable;
 
 1;
-
