@@ -16,6 +16,7 @@ our $VERSION = '0.1';
 $VERSION = eval $VERSION;
 
 use TCO::Output::Columnar::Types;
+use TCO::String::Truncator;
 
 # Number of characters the field can occupy.
 has 'width' => (
@@ -33,6 +34,15 @@ has 'alignment' => (
     reader   => '_get_alignment',
 );
 
+# Truncator object used when the data is wider than the field.
+has 'truncator' => (
+    is      => 'ro',
+    isa     => 'TCO::String::Truncator',
+    reader  => '_get_truncator',
+    lazy    => 1,
+    builder => '_build_truncator',
+);
+
 around BUILDARGS => sub {
     my $orig  = shift;
     my $class = shift;
@@ -47,6 +57,32 @@ around BUILDARGS => sub {
     
     return $class->$orig( $arg_for );
 };
+
+# Builder method to initialise default truncator. Method depends on the
+# alignment of the field.
+sub _build_truncator {
+    local $_;
+    my $self = shift;
+
+    my $align  = $self->_get_alignment;
+    my $method;
+
+    if ( $align == 'left' ) {
+        $method = 'end';
+    }
+    elsif ( $align == 'middle' ) {
+        # TODO: middle truncation
+        #$method = 'middle';
+        $method = 'end';
+    }
+    elsif ( $align == 'right' ) {
+        $method = 'beginning';
+    }
+    return TCO::String::Truncator->new({
+        method => $method,
+        length => $self->_get_length,
+    });
+}
 
 # Produces string representation of field.
 sub as_string {

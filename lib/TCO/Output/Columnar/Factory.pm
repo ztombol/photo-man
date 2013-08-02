@@ -48,17 +48,11 @@ around BUILDARGS => sub {
     my $orig  = shift;
     my $class = shift;
 
-    my $arg_for;
-
-    if ( @_ == 1 && ref $_[0] ) {
-        # Hashref
-        $arg_for = $_[0];
-    } else {
-        # Hash
-#        my ( %arg ) = @_;
-#        my $arg_for = \%arg;
+    if ( not (@_ == 1 && ref $_[0]) ) {
+        croak "Error: constructor requires a hashref of attributes!";
     }
 
+    my $arg_for = shift;
     my $format  = $arg_for->{format};
     my $control = $arg_for->{control} || ' ' x length $format;
 
