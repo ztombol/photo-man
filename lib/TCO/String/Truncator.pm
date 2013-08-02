@@ -46,9 +46,9 @@ around BUILDARGS => sub {
     my $orig  = shift;
     my $class = shift;
 
-    if ( not (@_ == 1 && ref $_[0]) ) {
-        croak "Error: constructor requires a hashref of attributes!";
-    }
+#    if ( not (@_ == 1 && ref $_[0]) ) {
+#        croak "Error: constructor requires a hashref of attributes!";
+#    }
 
     return $class->$orig( @_ );
 };
