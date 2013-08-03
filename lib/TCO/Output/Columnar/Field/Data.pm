@@ -44,18 +44,16 @@ has 'truncator' => (
 );
 
 around BUILDARGS => sub {
-    my $orig  = shift;
+    my $orig = shift;
     my $class = shift;
-    my $type = 'data';
+    my $args_ref;
 
-    if ( not (@_ == 1 && ref $_[0]) ) {
-        croak "Error: constructor requires a hashref of attributes!";
-    }
+    # Accept attributes in a hash or a hashref.
+    if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
+    else                                    { $args_ref = {@_};  }
 
-    my $arg_for = shift;
-    $arg_for->{type} = $type;
-    
-    return $class->$orig( $arg_for );
+    $args_ref->{type} = 'data';
+    return $class->$orig( $args_ref );
 };
 
 # Builder method to initialise default truncator. Method depends on the
@@ -63,24 +61,15 @@ around BUILDARGS => sub {
 sub _build_truncator {
     local $_;
     my $self = shift;
-
     my $align  = $self->_get_alignment;
-    my $method;
-
-    if ( $align == 'left' ) {
-        $method = 'end';
-    }
-    elsif ( $align == 'middle' ) {
-        # TODO: middle truncation
-        #$method = 'middle';
-        $method = 'end';
-    }
-    elsif ( $align == 'right' ) {
-        $method = 'beginning';
-    }
+    # TODO: middle truncation
+    my $method = ( $align eq 'left'   ) ? 'end'
+               : ( $align eq 'centre' ) ? 'end'
+               : 'beginning';
+    
     return TCO::String::Truncator->new({
         method => $method,
-        length => $self->_get_length,
+        length => $self->_get_width,
     });
 }
 
@@ -88,6 +77,9 @@ sub _build_truncator {
 sub as_string {
     my $self = shift;
     my $data = shift;
+
+    # Truncate data if necessary.
+    $data = $self->_get_truncator->truncate($data);
 
     if ( $self->_get_alignment eq 'centre' ) {
         # Centre alignment. Pad text with spaces on both sides.

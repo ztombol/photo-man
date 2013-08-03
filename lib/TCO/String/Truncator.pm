@@ -42,17 +42,6 @@ has 'ellipsis' => (
     reader  => '_get_ellipsis',
 );
 
-around BUILDARGS => sub {
-    my $orig  = shift;
-    my $class = shift;
-
-#    if ( not (@_ == 1 && ref $_[0]) ) {
-#        croak "Error: constructor requires a hashref of attributes!";
-#    }
-
-    return $class->$orig( @_ );
-};
-
 # Truncates a string according to the parameters passed to the constructor.
 sub truncate {
     my $self = shift;

@@ -25,17 +25,14 @@ has 'string' => (
 around BUILDARGS => sub {
     my $orig = shift;
     my $class = shift;
-    my $type = 'literal';
+    my $args_ref;
 
-    if ( not (@_ == 1 && ref $_[0]) ) {
-        croak "Error: constructor requires a hashref of attributes!";
-    }
-    
-    my $arg_for = shift;
-    return $class->$orig(
-        type   => $type,
-        string => $arg_for->{string},
-    );
+    # Accept attributes in a hash or a hashref.
+    if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
+    else                                    { $args_ref = {@_};  }
+
+    $args_ref->{type} = 'literal';
+    return $class->$orig( $args_ref );
 };
 
 # Produces string representation of field.

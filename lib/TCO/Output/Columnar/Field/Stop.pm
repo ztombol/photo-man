@@ -18,14 +18,13 @@ $VERSION = eval $VERSION;
 around BUILDARGS => sub {
     my $orig  = shift;
     my $class = shift;
-    my $type = 'stop';
 
     if ( @_ != 0 ) {
         croak "Error: constructor requires no parameters!";
     }
 
     return $class->$orig(
-        type => $type,
+        type => 'stop',
     );
 };
 

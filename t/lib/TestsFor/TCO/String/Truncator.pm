@@ -7,20 +7,17 @@ use TCO::String::Truncator;
 sub class_to_test { 'TCO::String::Truncator' }
 
 sub constructor : Tests {
-    my $self = shift;
+    my $self  = shift;
     my $class = $self->class_to_test;
 
     can_ok $class, 'new';
     throws_ok { $class->new }
         qr/Attribute.*required/,
         "Creating a $class without proper attributes should fail";
-    isa_ok $self->class_to_test->new(
-        method => 'end',
-        length => 10,
-    ), $class;
+    isa_ok $self->default_truncator, $class;
 }
 
-sub truncate : Test {
+sub truncate : Tests {
     my $self = shift;
 
     # Test different truncation methods.
@@ -37,7 +34,7 @@ sub truncate_at_beginning {
     my $trunc;
 
     # Default.
-    $trunc = TCO::String::Truncator->new({
+    $trunc = $self->class_to_test->new({
         method => 'beginning',
         length => '20',
     });
@@ -45,7 +42,7 @@ sub truncate_at_beginning {
         'beginning: truncation should be correct with default delimiter and ellipsis';
 
     # Delimiter.
-    $trunc = TCO::String::Truncator->new({
+    $trunc = $self->class_to_test->new({
         method    => 'beginning',
         length    => length $one_char_delim,
     });
@@ -53,7 +50,7 @@ sub truncate_at_beginning {
         'beginning: truncation should not happen when target is short enough';
 
     # Delimiter longer than ellipsis.
-    $trunc = TCO::String::Truncator->new({
+    $trunc = $self->class_to_test->new({
         method    => 'beginning',
         length    => '18',
         ellipsis  => '..',
@@ -73,7 +70,7 @@ sub truncate_at_end {
     my $trunc;
 
     # Default.
-    $trunc = TCO::String::Truncator->new({
+    $trunc = $self->class_to_test->new({
         method => 'end',
         length => '20',
     });
@@ -81,7 +78,7 @@ sub truncate_at_end {
         'end: truncation should be correct with default delimiter and ellipsis';
 
     # Delimiter.
-    $trunc = TCO::String::Truncator->new({
+    $trunc = $self->class_to_test->new({
         method    => 'end',
         length    => length $one_char_delim,
     });
@@ -89,7 +86,7 @@ sub truncate_at_end {
         'end: truncation should not happen when target is short enough';
 
     # Delimiter longer than ellipsis.
-    $trunc = TCO::String::Truncator->new({
+    $trunc = $self->class_to_test->new({
         method    => 'end',
         length    => '18',
         ellipsis  => '..',
@@ -98,6 +95,14 @@ sub truncate_at_end {
     is $trunc->truncate($four_char_delim), 'pear----apple..',
         'end: truncation should be correct when the delimiter is longer than '
       . 'ellipsis';
+}
+
+sub default_truncator {
+    my $self = shift;
+    return $self->class_to_test->new(
+        method => 'end',
+        length => 10,
+    );
 }
 
 1;
