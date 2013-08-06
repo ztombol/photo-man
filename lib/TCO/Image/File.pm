@@ -35,17 +35,6 @@ has 'metadata' => (
     builder  => '_load_metadata',
 );
 
-around BUILDARGS => sub {
-    my $orig = shift;
-    my $class = shift;
-
-    if ( not (@_ == 1 && ref $_[0]) ) {
-        croak "Error: constructor requires a hashref of attributes!";
-    }
-
-    return $class->$orig( @_ );
-};
-
 # Builder method to load metadata.
 sub _load_metadata {
     local $_;
@@ -61,7 +50,7 @@ sub _load_metadata {
 # Trigger method to reload metadata. Used when path is changed.
 sub _reload_metadata {
     my ( $self, $new_path, $old_path ) = @_;
-    $self->_set_metadata( $self->_load_metadata($new_path) );
+    $self->_set_metadata( $self->_load_metadata );
 }
 
 # Moves the file to a new location. Also creates the directories leading up to

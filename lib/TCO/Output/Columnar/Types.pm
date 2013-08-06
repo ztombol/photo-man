@@ -11,3 +11,5 @@ subtype 'TCO::Output::Columnar::Types::FieldAlignment'
     => as      'Str'
     => where   { $_ eq 'left' || $_ eq 'centre' || $_ eq 'right' }
     => message { "Field alignment must be one of `left', `centre' or `right', you specified $_" };
+
+1;

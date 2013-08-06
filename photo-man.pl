@@ -17,7 +17,7 @@ use diagnostics;
 
 use lib 'lib';
 
-use TCO::Output::Columnar::Factory;
+use TCO::Output::Columnar::Format;
 use TCO::Image::File;
 use TCO::Image::PhotoMan;
 
@@ -262,7 +262,7 @@ WARNING
 # @returns    header and record output objects in this order (array)
 sub print_args {
     # Output format.
-    my $param = TCO::Output::Columnar::Factory->new({
+    my $param = TCO::Output::Columnar::Format->new({
         format => "@>>>>>>>>> = @<\n",
     });
 
@@ -301,11 +301,11 @@ sub init_output {
 
     if ($opt_verbose) {
         # Verbose output (vertical). Print operations/messages on their own line.
-        $header = TCO::Output::Columnar::Factory->new({
+        $header = TCO::Output::Columnar::Format->new({
             format  => ":: @<\n",
         });
         
-        $record = TCO::Output::Columnar::Factory->new({
+        $record = TCO::Output::Columnar::Format->new({
             format  => "[@|||||] @>>>>>>>>>>>> = @<<<<<<<\r[@|||||]\n",
             control => "        ^             ^          ^           ",
         });
@@ -315,10 +315,10 @@ sub init_output {
         # on the same line.
 
         # Base: `[result] [filename]'
-        $header = TCO::Output::Columnar::Factory->new({
+        $header = TCO::Output::Columnar::Format->new({
             format  => "[result] [ filename and path                          ]",
         });
-        $record = TCO::Output::Columnar::Factory->new({
+        $record = TCO::Output::Columnar::Format->new({
             format  => "[      ] @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
         });
      
