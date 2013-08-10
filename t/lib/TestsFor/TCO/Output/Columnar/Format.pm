@@ -1,11 +1,53 @@
 package TestsFor::TCO::Output::Columnar::Format;
 
-use Test::Most;
-use Capture::Tiny qw(capture_merged capture capture_stdout);
-use base 'TestsFor';
-use TCO::Output::Columnar::Format;
+use Test::Class::Most
+    parent      =>'TestsFor',
+    attributes  => [qw(default_formatter)];
 
-sub class_to_test { 'TCO::Output::Columnar::Format' }
+use Capture::Tiny qw(capture_merged);
+
+sub startup : Tests(startup) {
+    my $self  = shift;
+    my $class = ref $self;
+
+    # First call the parent method.
+    $self->next::method;
+
+    # Startup code goes here...
+}
+
+sub setup : Tests(setup) {
+    my $self  = shift;
+    my $class = $self->class_to_test;
+
+    # First call the parent method.
+    $self->next::method;
+
+    # Instantiate default formatter object.
+    $self->default_formatter(
+        $class->new(
+            format => "[      ] @>>>>>>> => @<<<<<<<\r[@|||||]\n",
+        )
+    );
+}
+
+sub teardown : Tests(teardown) {
+    my $self = shift;
+
+    # Teardown code goes here...
+
+    # Finally, call parent method.
+    $self->next::method;
+}
+
+sub shutdown : Tests(shutdown) {
+    my $self = shift;
+
+    # Shutdown code goes here...
+
+    # Finally, call parent method.
+    $self->next::method;
+}
 
 sub constructor : Tests {
     my $self  = shift;
@@ -32,7 +74,7 @@ sub print : Tests {
             scalar capture_merged { $fmt->print('port', 54190)         },
             scalar capture_merged { $fmt->print('9.43')                },
             scalar capture_merged { $fmt->print('DONE')                },
-        ],[
+        ], [
             "[      ]  reading => database   ",
             "   port = 54190   (",
             " 9.43s)\r[",
@@ -50,7 +92,7 @@ sub print : Tests {
             scalar capture_merged { $fmt->print('port', 54190)          },
             scalar capture_merged { $fmt->print('9.43')                 },
             scalar capture_merged { $fmt->print('DONE')                 },
-        ],[
+        ], [
             "[      ]  reading => database",
             "      port = 54190  ",
             " ( 9.43s)",
@@ -69,7 +111,7 @@ sub print : Tests {
             scalar capture_merged { $fmt->print('9.43')                 },
             scalar capture_merged { $fmt->print('DONE', 'reading', 'database')  },
             scalar capture_merged { $fmt->print('port', 54190)          },
-        ],[
+        ], [
             "[      ]  reading => database",
             "      port = 54190  ",
             " ( 9.43s)",
@@ -113,13 +155,6 @@ sub append : Tests {
             "\r[ DONE ]\n",
         ],
         'appended formatters should render output correctly';
-}
-
-sub default_formatter {
-    my $self = shift;
-    return $self->class_to_test->new(
-        format => 'test',
-    );
 }
 
 1;

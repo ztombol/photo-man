@@ -1,10 +1,52 @@
 package TestsFor::TCO::String::Truncator;
 
-use Test::Most;
-use base 'TestsFor';
-use TCO::String::Truncator;
+use Test::Class::Most
+    parent      =>'TestsFor',
+    attributes  => [qw(default_truncator)];
 
-sub class_to_test { 'TCO::String::Truncator' }
+sub startup : Tests(startup) {
+    my $self  = shift;
+    my $class = ref $self;
+
+    # First call the parent method.
+    $self->next::method;
+
+    # Startup code goes here...
+}
+
+sub setup : Tests(setup) {
+    my $self  = shift;
+    my $class = $self->class_to_test;
+
+    # First call the parent method.
+    $self->next::method;
+
+    # Instantiate default field object.
+    $self->default_truncator(
+        $class->new(
+            method => 'end',
+            length => 10,
+        )
+    );
+}
+
+sub teardown : Tests(teardown) {
+    my $self = shift;
+
+    # Teardown code goes here...
+
+    # Finally, call parent method.
+    $self->next::method;
+}
+
+sub shutdown : Tests(shutdown) {
+    my $self = shift;
+
+    # Shutdown code goes here...
+
+    # Finally, call parent method.
+    $self->next::method;
+}
 
 sub constructor : Tests {
     my $self  = shift;
@@ -25,8 +67,10 @@ sub truncate : Tests {
     $self->truncate_at_end;
 }
 
+# Removing excess at the beginning.
 sub truncate_at_beginning {
-    my $self = shift;
+    my $self  = shift;
+    my $class = $self->class_to_test;
 
     # Test strings with one and multi-character delimiters.
     my $one_char_delim = 'The quick brown fox jumps over the lazy dog.';
@@ -34,7 +78,7 @@ sub truncate_at_beginning {
     my $trunc;
 
     # Default.
-    $trunc = $self->class_to_test->new({
+    $trunc = $class->new({
         method => 'beginning',
         length => '20',
     });
@@ -42,7 +86,7 @@ sub truncate_at_beginning {
         'beginning: truncation should be correct with default delimiter and ellipsis';
 
     # Delimiter.
-    $trunc = $self->class_to_test->new({
+    $trunc = $class->new({
         method    => 'beginning',
         length    => length $one_char_delim,
     });
@@ -50,7 +94,7 @@ sub truncate_at_beginning {
         'beginning: truncation should not happen when target is short enough';
 
     # Delimiter longer than ellipsis.
-    $trunc = $self->class_to_test->new({
+    $trunc = $class->new({
         method    => 'beginning',
         length    => '18',
         ellipsis  => '..',
@@ -61,8 +105,10 @@ sub truncate_at_beginning {
       . ' than ellipsis';
 }
 
+# Removing excess at the end.
 sub truncate_at_end {
-    my $self = shift;
+    my $self  = shift;
+    my $class = $self->class_to_test;
 
     # Test strings with one and multi-character delimiters.
     my $one_char_delim = 'The quick brown fox jumps over the lazy dog.';
@@ -70,7 +116,7 @@ sub truncate_at_end {
     my $trunc;
 
     # Default.
-    $trunc = $self->class_to_test->new({
+    $trunc = $class->new({
         method => 'end',
         length => '20',
     });
@@ -78,7 +124,7 @@ sub truncate_at_end {
         'end: truncation should be correct with default delimiter and ellipsis';
 
     # Delimiter.
-    $trunc = $self->class_to_test->new({
+    $trunc = $class->new({
         method    => 'end',
         length    => length $one_char_delim,
     });
@@ -86,7 +132,7 @@ sub truncate_at_end {
         'end: truncation should not happen when target is short enough';
 
     # Delimiter longer than ellipsis.
-    $trunc = $self->class_to_test->new({
+    $trunc = $class->new({
         method    => 'end',
         length    => '18',
         ellipsis  => '..',
@@ -95,14 +141,6 @@ sub truncate_at_end {
     is $trunc->truncate($four_char_delim), 'pear----apple..',
         'end: truncation should be correct when the delimiter is longer than '
       . 'ellipsis';
-}
-
-sub default_truncator {
-    my $self = shift;
-    return $self->class_to_test->new(
-        method => 'end',
-        length => 10,
-    );
 }
 
 1;

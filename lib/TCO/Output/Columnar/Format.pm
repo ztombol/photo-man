@@ -224,9 +224,9 @@ sub _parse_format {
 # The append will cause the last stop be removed and the existing and new
 # groups to be merged. Thus, the output of the commands below.
 #
-#   $fmt->print('name', 'Jake Green');  "@>>name = Jake Green   ("
+#   $fmt->print('name', 'Jake Green');  "   name = Jake Green   ("
 #   # more code...
-#   $fmt->print('Jericho');             "@>>name = Jake Green   (Jericho)\n"
+#   $fmt->print('Jericho');             "   name = Jake Green   (Jericho)\n"
 #
 # If the two commands would follow each other immediately there would be no
 # problem. However, if there is considerable delay between executing them, the

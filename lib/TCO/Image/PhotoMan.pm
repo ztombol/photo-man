@@ -11,7 +11,6 @@ use Carp;
 use TCO::Image::File;
 
 use File::Compare;
-use File::stat;
 use DateTime;
 use DateTime::Format::Strptime;
 
@@ -34,17 +33,6 @@ has 'forced' => (
     reader  => 'is_forced',
 );
 
-around BUILDARGS => sub {
-    my $orig = shift;
-    my $class = shift;
-
-    if ( not (@_ == 1 && ref $_[0]) ) {
-        croak "Error: constructor requires a hashref of attributes!";
-    }
-
-    return $class->$orig( @_ );
-};
-
 # Moves the image to a new location and/or renames it. The new location and
 # filename is specified with templates that lets the user to combine string
 # literals and parts of the creation timestamp from the metadata of the image.
@@ -64,16 +52,16 @@ around BUILDARGS => sub {
 #           3, the file is already at the path
 sub move_and_rename {
     my $self = shift;
-
-    if ( not (@_ == 1 && ref $_[0]) ) {
-        croak "Error: requires a hashref of attributes!";
-    }
-
-    my $arg_for = shift;
-    my $image         = $arg_for->{image};
-    my $location_temp = $arg_for->{location_temp};
-    my $filename_temp = $arg_for->{filename_temp};
+    my $args_ref;
     my $status;
+
+    # Accept attributes in a hash or a hashref.
+    if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
+    else                                    { $args_ref = {@_};  }
+
+    my $image         = $args_ref->{image};
+    my $location_temp = $args_ref->{location_temp};
+    my $filename_temp = $args_ref->{filename_temp};
 
     # Assemble new path.
     my $new_file = $self->_make_path( $image, $location_temp, $filename_temp);
@@ -159,7 +147,7 @@ sub _template_to_str {
         pattern   => '%Y:%m:%d %H:%M:%S',
     );
     my $img_ctime = $img_ctime_parser->parse_datetime(
-        $image->get_metadata->{'CreateDate'}
+        $image->get_img_meta->{'CreateDate'}
     );
 
     # Return interpolated string.
@@ -175,28 +163,24 @@ sub _template_to_str {
 # returns  -1 in case of errors
 #           0 timestamp successfully changed
 #           1 timestamp already correct
-#
-# NOTE: the core of this function cannot be moved to the File class unless it
-# is implemented with something independent of EXIF tool.
 sub fix_timestamp {
     my $self = shift;
-
-    if ( not ( @_ == 1 && ref $_[0] ) ) {
-        croak "Error: needs a single heshref of parameters";
-    }
-
+    my $args_ref;
     my $status;
-    my $arg_for = shift;
-    my $image    = $arg_for->{image};
-    my $timezone = $arg_for->{timezone};
 
-    # Cache local timezone (retriving it can be expensive).
+    # Accept parameters in a hash or a hashref.
+    if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
+    else                                    { $args_ref = {@_};  }
+
+    my $image    = $args_ref->{image};
+    my $timezone = $args_ref->{timezone};
+
+    # Cache local timezone (retrival can be expensive).
     my $local_tz = DateTime::TimeZone->new( name => 'local' );
 
     # File system timestamp.
-    my $fs_meta = stat( $image->get_path );
     my $fs_mtime = DateTime->from_epoch(
-        epoch     => $fs_meta->mtime,
+        epoch     => $image->get_fs_meta->mtime,
         time_zone => $local_tz,
     );
     
@@ -206,7 +190,7 @@ sub fix_timestamp {
         time_zone => $timezone,
     );
     my $img_mtime = $img_mtime_parser->parse_datetime(
-        $image->get_metadata->{'CreateDate'}
+        $image->get_img_meta->{'CreateDate'}
     );
     $img_mtime->set_formatter($img_mtime_parser);
 
@@ -221,12 +205,7 @@ sub fix_timestamp {
 
         # Write timestamp to file if we are not making a dry-run.
         if ( $self->do_commit ) {
-            my $exif_tool = new Image::ExifTool;
-            $exif_tool->SetNewValue( FileModifyDate => $img_mtime,
-                                     Protected      => 1,
-            );
-
-            if ( not $exif_tool->SetFileModifyDate($image->get_path) ) {
+            if ( $image->set_mod_time($img_mtime) ) {
                 # Something went wrong.
                 $status = -1;
             }

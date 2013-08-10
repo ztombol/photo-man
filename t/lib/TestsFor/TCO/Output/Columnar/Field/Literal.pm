@@ -1,10 +1,51 @@
 package TestsFor::TCO::Output::Columnar::Field::Literal;
 
-use Test::Most;
-use base 'TestsFor::TCO::Output::Columnar::Field';
-use TCO::Output::Columnar::Field::Literal;
+use Test::Class::Most
+    parent      =>'TestsFor',
+    attributes  => [qw(default_field)];
 
-sub class_to_test { 'TCO::Output::Columnar::Field::Literal' }
+sub startup : Tests(startup) {
+    my $self  = shift;
+    my $class = ref $self;
+
+    # First call the parent method.
+    $self->next::method;
+
+    # Startup code goes here...
+}
+
+sub setup : Tests(setup) {
+    my $self  = shift;
+    my $class = $self->class_to_test;
+
+    # First call the parent method.
+    $self->next::method;
+
+    # Instantiate default field object.
+    $self->default_field(
+        $class->new(
+            string => "It's okay, I'm a leaf on the wind.",
+        )
+    );
+}
+
+sub teardown : Tests(teardown) {
+    my $self = shift;
+
+    # Teardown code goes here...
+
+    # Finally, call parent method.
+    $self->next::method;
+}
+
+sub shutdown : Tests(shutdown) {
+    my $self = shift;
+
+    # Shutdown code goes here...
+
+    # Finally, call parent method.
+    $self->next::method;
+}
 
 sub as_string : Tests {
     my $self = shift;
@@ -15,13 +56,6 @@ sub as_string : Tests {
     });
     is $field->as_string($string), $string,
         'field should render the string correctly';
-}
-
-sub default_field {
-    my $self = shift;
-    return $self->class_to_test->new(
-        string => "It's okay, I'm a leaf on the wind.",
-    );
 }
 
 1;

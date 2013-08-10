@@ -9,6 +9,7 @@ use namespace::autoclean;
 use Carp;
 
 use Image::ExifTool;
+use File::stat;
 use File::Copy;
 use File::Path qw(make_path);
 
@@ -22,62 +23,131 @@ has 'path' => (
     required => 1,
     reader   => 'get_path',
     writer   => '_set_path',
-    trigger  => \&_reload_metadata,
+    trigger  => \&_reload_meta,
 );
 
 # EXIF metadata associated with the image.
-has 'metadata' => (
+has 'img_meta' => (
     is       => 'rw',
     isa      => 'Ref',
-    reader   => 'get_metadata',
-    writer   => '_set_metadata',
+    reader   => 'get_img_meta',
+    writer   => '_set_img_meta',
     lazy     => 1,
-    builder  => '_load_metadata',
+    builder  => '_load_img_meta',
 );
 
-# Builder method to load metadata.
-sub _load_metadata {
+# File system metadata.
+has 'fs_meta' => (
+    is      => 'rw',
+    isa     => 'Ref',
+    reader  => 'get_fs_meta',
+    writer  => '_set_fs_meta',
+    lazy    => 1,
+    builder => '_load_fs_meta',
+);
+
+# Exiftool object for metadata operations, e.g. reading/writing tags.
+has 'exiftool' => (
+    is      => 'ro',
+    isa     => 'Ref',
+    reader  => '_get_exiftool',
+    default => sub { new Image::ExifTool },
+);
+
+# Loads file system metadata, e.g. timestamps, ownership, permissions, etc.
+#
+# @returns a File::stat object containing the file system metadata
+sub _load_fs_meta {
+    local $_;
+    my $self = shift;
+
+    return stat( $self->get_path );
+}
+
+# Loads metadata found in the image file, e.g. EXIF, IPTC, XMP, etc.
+#
+# @returns a hashref containing metadata embedded in the image file
+sub _load_img_meta {
     local $_;
     my $self = shift;
 
     # Extract metadata.
     my $exif_tool = new Image::ExifTool;
-    my $exif_meta = $exif_tool->ImageInfo( $self->get_path );
-
-    return $exif_meta;
+    return $exif_tool->ImageInfo( $self->get_path );
 }
 
-# Trigger method to reload metadata. Used when path is changed.
-sub _reload_metadata {
+# Reloads file system and image embedded metadata. Triggered when path is
+# changed.
+sub _reload_meta {
     my ( $self, $new_path, $old_path ) = @_;
-    $self->_set_metadata( $self->_load_metadata );
+    $self->_set_fs_meta( $self->_load_fs_meta );
+    $self->_set_img_meta( $self->_load_img_meta );
 }
 
-# Moves the file to a new location. Also creates the directories leading up to
-# the destination if they do not exist yet. The operation is executed only if
-# the the image is not in `read only' mode, in which case success is returned
-# immediately. This behaviour is implemented to support dry-run mode.
+# Moves the file and creates the directories leading up to the new location if
+# they do not exist already.
 #
-# @param [in] self    file to move (source)
-# @param [in] target  new path including filename (destination)
-#
-# @returns  0 on success,
-#           1 otherwise
+# @param [in] $1  new path of file (includes filename)
+# return  0 on success
+#         1 otherwise
 sub move_file {
     my $self = shift;
-    my $target = shift;
+    my $dest = shift;
 
-    # Make sure the directory tree exists up to the Target.
-    my $dirs = ( File::Spec->splitpath( $target ) )[2];
-    make_path( $dirs );
+    # Make sure the directory tree exists up to the destination.
+    make_path( (File::Spec->splitpath($dest))[1] );
 
     my $result;
-    if ( $result = move($self->get_path, $target ) ) {
+    if ( $result = move($self->get_path, $dest) ) {
         # File moved successfully. Update path and metadata.
-        $self->set_path( $target );
+        $self->_set_path( $dest );
     }
+
     # Flip result. move returns 1 on success and 0 on error.
     return not $result;
+}
+
+# Same as above just using exiftool to move the file and create necessary
+# directories.
+#sub move_file {
+#    my $self = shift;
+#    my $dest = shift;
+#
+#    my $exif_tool = new Image::ExifTool;
+#
+#    # This performs the move immediately
+#    my $result = $exif_tool->SetFileName(
+#        $self->get_path,
+#        $dest,
+#    );
+#
+#    return not $result;
+#}
+
+# Changes the file system modification timestamps of the file.
+#
+# @param [in] $
+# return  0 on success
+#         1 otherwise
+sub set_mod_time {
+    my $self = shift;
+    my $mtime = shift;
+    my $exiftool = $self->_get_exiftool;
+
+    # Setting new timestamp.
+    my ( $success, $err_str ) = $exiftool->SetNewValue(
+        FileModifyDate => $mtime,
+        Protected      => 1,
+    );
+
+    if ( $success && $exiftool->SetFileModifyDate($self->get_path) != -1 ) {
+        # Reload metadata and return success.
+        $self->_reload_meta;
+        return 0;
+    }
+
+    # Failure.
+    return 1;
 }
 
 __PACKAGE__->meta->make_immutable;

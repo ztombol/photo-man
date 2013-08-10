@@ -1,20 +1,64 @@
 package TestsFor::TCO::Output::Columnar::Field::Data;
 
-use Test::Most;
-use base 'TestsFor::TCO::Output::Columnar::Field';
-use TCO::Output::Columnar::Field::Data;
+use Test::Class::Most
+    parent      =>'TestsFor',
+    attributes  => [qw(default_field)];
 
-sub class_to_test { 'TCO::Output::Columnar::Field::Data' }
+sub startup : Tests(startup) {
+    my $self  = shift;
+    my $class = ref $self;
+
+    # First call the parent method.
+    $self->next::method;
+
+    # Startup code goes here...
+}
+
+sub setup : Tests(setup) {
+    my $self  = shift;
+    my $class = $self->class_to_test;
+
+    # First call the parent method.
+    $self->next::method;
+
+    # Instantiate default field object.
+    $self->default_field(
+        $class->new(
+            width     => 20,
+            alignment => 'left',
+        )
+    );
+}
+
+sub teardown : Tests(teardown) {
+    my $self = shift;
+
+    # Teardown code goes here...
+
+    # Finally, call parent method.
+    $self->next::method;
+}
+
+sub shutdown : Tests(shutdown) {
+    my $self = shift;
+
+    # Shutdown code goes here...
+
+    # Finally, call parent method.
+    $self->next::method;
+}
 
 sub as_string : Tests {
     my $self = shift;
 
-    $self->data_untruncated;
-    $self->data_truncated;
+    # Test rendering with all kinds of data.
+    $self->data_padding;
+    $self->data_truncation;
     $self->data_user_truncator;
 }
 
-sub data_untruncated {
+# Testing padding with data that is shorter than the field.
+sub data_padding {
     my $self = shift;
     my $field;
     my $string = "Shiny!";
@@ -44,7 +88,8 @@ sub data_untruncated {
         'untruncates, right aligned data should be rendered correctly';
 }
 
-sub data_truncated {
+# Testing truncation with data that is longer than the field.
+sub data_truncation {
     my $self = shift;
     my $field;
     my $string = "Did you see the chandelier? It's hovering.";
@@ -74,7 +119,7 @@ sub data_truncated {
         'truncated, right aligned data should be rendered correctly';
 }
 
-# Testing formatting when a truncator is supplied by the user.
+# Testing truncation with user specified truncators.
 sub data_user_truncator {
     my $self = shift;
     my $field;
@@ -91,14 +136,6 @@ sub data_user_truncator {
     );
     is $field->as_string($string), "...r? It's hovering.",
         'data should be rendered correctly with user specified truncator';
-}
-
-sub default_field {
-    my $self = shift;
-    return $self->class_to_test->new(
-        width     => 20,
-        alignment => 'left',
-    );
 }
 
 1;
