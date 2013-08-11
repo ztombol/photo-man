@@ -124,7 +124,8 @@ sub move_file {
 #    return not $result;
 #}
 
-# Changes the file system modification timestamps of the file.
+# Changes the file system modification timestamps of the file. It also
+# explicitely reloads all metadata.
 #
 # @param [in] $
 # return  0 on success
