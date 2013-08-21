@@ -191,10 +191,11 @@ while (my $file = glob("$pattern")) {
     if ($opt_touch) {
         $record->print( 'time' ) if ($opt_verbose);
 
-        my ( $status, $new_time ) = $pm->fix_timestamp({
+        my $status = $pm->fix_timestamp({
             image         => $image,
             timezone      => $arg_touch_tz,
         });
+        my $new_time = $image->get_fs_meta->mtime;
 
         # Output
         if ( $opt_verbose ) {

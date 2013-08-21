@@ -12,6 +12,7 @@ use Image::ExifTool;
 use File::stat;
 use File::Copy;
 use File::Path qw(make_path);
+use File::LibMagic;
 
 our $VERSION = '0.1';
 $VERSION = eval $VERSION;
@@ -84,6 +85,43 @@ sub _reload_meta {
     $self->_set_img_meta( $self->_load_img_meta );
 }
 
+# Returns the basename of the file (filename and extension).
+#
+# @param [in] $0  file object
+# returns basename including extension
+sub get_basename {
+    my $self = shift;
+    return (File::Spec->splitpath( $self->get_path ))[2];
+}
+
+# Returns the extension of the file (portion after the last dot).
+#
+# @param [in] $0  file object
+# @param [in] $1  use LibMagic to get extension?
+sub get_extension {
+    my $self = shift;
+    my $use_magic = shift;
+
+    if ( $use_magic ) {
+        my $magic = File::LibMagic->new();
+        $magic->checktype_filename($self->get_path) =~ m{image/(.*?);};
+        return $1;
+    }
+    else {
+        $self->get_path =~ /\.([^.]+)\Z/;
+        return $1;
+    }
+}
+
+# Returns the parent directory of the file.
+#
+# @param [in] $0  file object
+# returns parent parent directory
+sub get_dir {
+    my $self = shift;
+    return File::Spec->canonpath( (File::Spec->splitpath( $self->get_path ))[1] );
+}
+
 # Moves the file and creates the directories leading up to the new location if
 # they do not exist already.
 #
@@ -99,7 +137,7 @@ sub move_file {
 
     my $result;
     if ( $result = move($self->get_path, $dest) ) {
-        # File moved successfully. Update path and metadata.
+        # File moved successfully. Update path and thus metadata.
         $self->_set_path( $dest );
     }
 
@@ -125,30 +163,33 @@ sub move_file {
 #}
 
 # Changes the file system modification timestamps of the file. It also
-# explicitely reloads all metadata.
+# reloads all metadata on successul timestamp change.
 #
-# @param [in] $
-# return  0 on success
-#         1 otherwise
+# @param [in] mtime  modification timestamp to set (DateTime ref)
+# return -1 on error
+#         0 on successful timestamp change
 sub set_mod_time {
     my $self = shift;
     my $mtime = shift;
     my $exiftool = $self->_get_exiftool;
 
-    # Setting new timestamp.
+    # Set new timestamp.
     my ( $success, $err_str ) = $exiftool->SetNewValue(
         FileModifyDate => $mtime,
         Protected      => 1,
     );
 
-    if ( $success && $exiftool->SetFileModifyDate($self->get_path) != -1 ) {
-        # Reload metadata and return success.
+    return -1 if ( ! $success );
+
+    # Write timestamp to file system.
+    if ( $exiftool->SetFileModifyDate($self->get_path) == 1 ) {
+        # Timestamp changed. Reload metadata.
         $self->_reload_meta;
         return 0;
     }
 
-    # Failure.
-    return 1;
+    # Something went wrong.
+    return -1;
 }
 
 __PACKAGE__->meta->make_immutable;

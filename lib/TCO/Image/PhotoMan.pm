@@ -41,7 +41,8 @@ has 'forced' => (
 # object and thus reloads metadata.
 #
 # @param [in] image          to move and/or rename
-# @param [in] location_temp  template used to produce the new location for moving
+# @param [in] location_temp  template used to produce the new location for
+#			     moving
 # @param [in] filename_temp  template used to produce the new filename for
 #                            renaming
 #
@@ -49,7 +50,7 @@ has 'forced' => (
 #           0, successful moving/renaming
 #           1, file at the destination overwritten
 #           2, another file already exists with the same path
-#           3, the file is already at the path
+#           3, the file is already at the given path
 sub move_and_rename {
     my $self = shift;
     my $args_ref;
@@ -62,9 +63,10 @@ sub move_and_rename {
     my $image         = $args_ref->{image};
     my $location_temp = $args_ref->{location_temp};
     my $filename_temp = $args_ref->{filename_temp};
+    my $use_libmagic  = $args_ref->{use_libmagic};
 
     # Assemble new path.
-    my $new_file = $self->_make_path( $image, $location_temp, $filename_temp);
+    my $new_file = $self->_make_path( $image, $location_temp, $filename_temp, $use_libmagic);
 
     # Attempt to move the file.
     if ( ! -e $new_file ) {
@@ -83,10 +85,17 @@ sub move_and_rename {
         my $cmp = compare( $image->get_path, $new_file );
         if ( $cmp == 1 ) {
             # Target is different from Source. Can we overwrite?
-            if ( $self->do_commit && $self->is_forced ) {
-                $image->move_file( $new_file );
+            if ( $self->is_forced ) {
+                # Overwrite file.
+                if ( $self->do_commit ) {
+                    $image->move_file( $new_file );
+                }
+                $status = 1;
             }
-            $status = 1;
+            else {
+                # Do not overwrite file.
+                $status = 2;
+            }
         }
         elsif ( $cmp == 0 ) {
             # Source and Target are the same file. Nothing to do!
@@ -94,21 +103,27 @@ sub move_and_rename {
         }
     }
 
-    # Return status code and new path.
-    return ( $status, $new_file );
+    # Return status code.
+    return $status;
 }
 
 # Creates a path based on location (for directory) and filename templates (for
 # the actual filename portion). The path is created by interpolating the
-# remplates with parts of the creation timestamp stored as image metadata.
+# template with parts of the DateTimeDigitized timestamp stored in the image's
+# metadata.
 # The templates are optional. If a template is not supplied, the original value
-# will be used. For example, if location template is specified but filename
-# template is not, then the new path will consist of the new location and the
-# original filename.
+# will be used. For example, a template is specified for location but not for
+# filename then the new path will consist of the new location and the original
+# filename.
+# The original extension (portion of filename after the last dot) will be used,
+# unless the last parameter is true. In which case LibMagic is used to
+# determine the extension.
 #
 # @param [in] $1  image to create path for
 # @param [in] $2  location template (optional)
 # @param [in] $3  filename template (optional)
+# @param [in] $4  0: use substring after the last dot, or
+#                 1: use LibMagic to determine extension
 #
 # returns the produced path
 sub _make_path {
@@ -117,14 +132,18 @@ sub _make_path {
     my $image         = shift;
     my $location_temp = shift;
     my $filename_temp = shift;
-    
-    my $new_location = ( defined $location_temp ) ?
-        $self->_template_to_str( $image, $location_temp ) :
-        ( File::Spec->splitpath($image->get_path) )[1];
+    my $use_libmagic  = shift;
+   
+    # Parent directory. 
+    my $new_location = ( defined $location_temp )
+      ? $self->_template_to_str( $image, $location_temp )
+      : $image->get_dir;
 
-    my $new_filename = ( defined $filename_temp ) ?
-        $self->_template_to_str( $image, $filename_temp ) :
-        ( File::Spec->splitpath($image->get_path) )[2];
+    # Filename including extension.
+    my $new_filename = ( defined $filename_temp )
+      ? $self->_template_to_str( $image, $filename_temp )
+        . '.' . $image->get_extension( $use_libmagic )
+      : $image->get_basename;
 
     return File::Spec->catfile( $new_location, $new_filename );
 }
@@ -154,8 +173,9 @@ sub _template_to_str {
     return $img_ctime->strftime( $template );
 }
 
-# Sets the file system modification timestamp to the EXIF creation timestamp
-# offset by the time difference between the original and the local timezone.
+# Sets the file system modification timestamp to the EXIF *digitised* timestamp
+# that is correctly offset by the time difference between the original (where the photo was
+# taken) and the local timezone (where the file system lives).
 #
 # @param [in] image     whose timestamp will be modified
 # @param [in] timezone  where the photo was taken
@@ -194,31 +214,18 @@ sub fix_timestamp {
     );
     $img_mtime->set_formatter($img_mtime_parser);
 
-    # Convert timestamp to local time zone. So the correct date and
-    # time is stringified when we set the file system timestamp.
+    # Convert embedded timestamp to local time zone.
     $img_mtime->set_time_zone( $local_tz );
 
-    # Set new timestamp if needed.
     if (   $img_mtime->truncate(to => 'second')
         != $fs_mtime->truncate( to => 'second') ) {
-        # Timestamp is incorrect.
 
-        # Write timestamp to file if we are not making a dry-run.
-        if ( $self->do_commit ) {
-            if ( $image->set_mod_time($img_mtime) ) {
-                # Something went wrong.
-                $status = -1;
-            }
-        }
-        $status = 0;
-    }
-    else {
-        # Timestamp correct.
-        $status = 1;
+        # Needs to be fixed.
+	return $image->set_mod_time($img_mtime) if $self->do_commit;
     }
 
-    # Return status and new timestamp.
-    return ( $status, $img_mtime );
+    # Already correct.
+    return 1;
 }
 
 __PACKAGE__->meta->make_immutable;

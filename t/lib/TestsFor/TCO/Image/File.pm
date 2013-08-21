@@ -34,7 +34,7 @@ sub setup : Tests(setup) {
     # Instantiate default file object.
     $self->default_file(
         $class->new(
-            path => File::Spec->catfile( $self->temp_dir, 'src', 'test.jpeg'),
+            path => File::Spec->catfile( $self->temp_dir, 'src', 'test.jpg'),
         )
     );
 }
@@ -70,13 +70,13 @@ sub create_sandbox {
     # Create directory structure.
     $self->temp_dir( File::Temp->newdir(
         template => "$tmp/pm-tests-XXXXXXXX",
-        #CLEANUP => 0
+	#CLEANUP => 0
     ));
     my $src = File::Spec->catdir( $self->temp_dir, 'src' );
     make_path( $src );
 
     # Copy source file.
-    if ( ! copy (File::Spec->catfile($res, 'test.jpeg'), $src) ) {
+    if ( ! copy (File::Spec->catfile($res, 'test.jpg'), $src) ) {
         croak "Error: while copying test file: $!";
     }
 }
@@ -90,6 +90,26 @@ sub constructor : Tests {
         qr/Attribute.*required/,
         "Creating a $class without proper attributes should fail";
     isa_ok $self->default_file, $class;
+}
+
+sub attributes : Tests {
+    my $self = shift;
+    my $file = $self->default_file;
+
+    my %default_attributes = (
+        basename  => [ 'test.jpg' ],
+        extension => [ 'jpg' , 0  ],
+        extension => [ 'jpeg', 1  ],
+        dir       => [ File::Spec->catfile( $self->temp_dir, 'src/' ) ],
+    );
+    
+    while (my ($attribute, $res_and_params) = each %default_attributes) {
+        my $method = "get_$attribute";
+        my $result = shift @{$res_and_params};
+        can_ok $file, $method;
+        is $file->$method(@{$res_and_params}), $result,
+            "The value for '$attribute' should be correct;"
+    }
 }
 
 sub move_file : Tests {
@@ -134,11 +154,11 @@ sub set_mod_time : Tests {
     (my $dt_local = $new_mtime) =~ s/(\d\d)\Z/:$1/;
 
     # Set new timestamp.
-    ok ! $file->set_mod_time( $dt_orig ),
+    is $file->set_mod_time( $dt_orig ), 0,
         'changing file system timestamp should complete without errors';
 
     is $file->get_img_meta->{'FileModifyDate'}, $dt_local,
-        'timestamp should be adjusted to local time zone';
+        'timestamp should be correctly adjusted to local time zone';
 }
 
 1;
