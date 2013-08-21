@@ -82,7 +82,7 @@ sub create_sandbox {
     # Create directory structure.
     $self->temp_dir( File::Temp->newdir(
         template => "$tmp/pm-tests-XXXXXXXX",
-        CLEANUP => 0,
+	#CLEANUP => 0,
     ));
     my $src      = File::Spec->catdir( $self->temp_dir, 'src' );
     my $src_copy = File::Spec->catdir( $self->temp_dir, 'src_copy' );
@@ -177,6 +177,7 @@ sub move_and_rename_nc_nf : Tests {
     diag 'Manager configuration: NON-commit, NON-forced';
     
     $self->test_move_and_rename_nc( $man );
+    $self->test_overwrite_itself( $man );
     $self->test_overwrite_nf( $man );
 
 }
@@ -189,6 +190,7 @@ sub move_and_rename_c_nf : Tests {
     diag 'Manager configuration: commit, NON-forced';
 
     $self->test_move_and_rename_c( $man );
+    $self->test_overwrite_itself( $man );
     $self->test_overwrite_nf( $man );
 }
 
@@ -200,12 +202,7 @@ sub move_and_rename_nc_f : Tests {
     diag 'Manager configuration: NON-commit, forced';
     
     $self->test_move_and_rename_nc( $man );
-
-    # Source and destination path is the same.
-    ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
-    ok $op == 3 && -e $src_path && -e $dst_path,
-        'Attempting to overwrite a file with itself should only return the '
-      . 'correct status';
+    $self->test_overwrite_itself( $man );
 
     # Same file already at destination.
     ($op, $src_path, $dst_path) = $self->same_file_there( $man );
@@ -228,12 +225,7 @@ sub move_and_rename_c_f : Tests {
     diag 'Manager configuration: commit, forced';
    
     $self->test_move_and_rename_c( $man );
-
-    # Source and destination path is the same.
-    ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
-    ok $op == 3 && -e $src_path && -e $dst_path,
-        'Attempting to overwrite a file with itself should only return the '
-      . 'correct status';
+    $self->test_overwrite_itself( $man );
 
     # Same file already at destination.
     ($op, $src_path, $dst_path) = $self->same_file_there( $man );
@@ -318,6 +310,21 @@ sub test_move_and_rename_c {
       . 'status';
 }
 
+# Runs overwrite test where the overwriting of the input file with itself is
+# attempted. Applies to all manager configurations.
+#
+# @param [in] $man  manager to test
+sub test_overwrite_itself {
+    my ($self, $man) = @_;
+    my ($op, $src_path, $dst_path);
+
+    # Source and destination path is the same.
+    ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
+    ok $op == 3 && -e $src_path && -e $dst_path,
+        'Attempting to overwrite a file with itself should only return the '
+      . 'correct status';
+}
+
 # Runs:
 #   - attempt to overwrite file with itself
 #   - the same file is already at the destination
@@ -333,12 +340,6 @@ sub test_overwrite_nf {
     # Needs non-forced mode manager.
     croak 'Needs non-forced mode manager' unless ( ! $man->is_forced );
     
-    # Source and destination path is the same.
-    ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
-    ok $op == 3 && -e $src_path && -e $dst_path,
-        'Attempting to overwrite a file with itself should only return the '
-      . 'correct status';
-
     # Same file already at destination.
     ($op, $src_path, $dst_path) = $self->same_file_there( $man );
     ok $op == 2 && -e $src_path && -e $dst_path && compare( $src_path, $dst_path ) == 0,
@@ -352,8 +353,8 @@ sub test_overwrite_nf {
       . 'the correct status';
 }
 
-# The six individual operations are encapsulated into separate subroutines
-# below.
+# The operations of the six individual test cases are encapsulated into
+# separate subroutines below.
 
 # Move file[0] => temp/2013.03/test.jpg
 sub move_only {
