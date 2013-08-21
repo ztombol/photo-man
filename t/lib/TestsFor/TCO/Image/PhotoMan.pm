@@ -148,7 +148,7 @@ sub fix_timestamp : Tests {
 #        rename   -/0  m/0  -/0  m/0
 # move & rename   -/0  m/0  -/0  m/0
 #   src_eq_dest   -/3  -/3  -/3  -/3
-#     same file   -/2  -/2  -/2  o/2
+#     same file   -/2  -/2  -/2  -/2
 #     diff file   -/2  -/2  -/1  o/1
 #
 # Where the the symbol before the slash is the action performed and the one
@@ -174,40 +174,11 @@ sub move_and_rename_nc_nf : Tests {
     my $man   = $self->class_to_test->new( commit => 0, forced => 0 );
     my ($op, $src_path, $dst_path);
 
-    diag 'Manager configuration: NO commit, NO forced';
+    diag 'Manager configuration: NON-commit, NON-forced';
     
-    # Move: src/test.jpg => temp/2013.03/test.jpg
-    ($op, $src_path, $dst_path) = $self->move_only( $man );
-    is $op, 0,
-        'Moving should only return the correct status';
+    $self->test_move_and_rename_nc( $man );
+    $self->test_overwrite_nf( $man );
 
-    # Rename: temp/2013.03/test.jpg => temp/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->rename_only( $man );
-    is $op, 0,
-        'Renaming should only return the correct status';
-    
-    # Move and Rename: temp/2013.03/img-20130319-160753.jpeg => dest/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->move_and_rename( $man );
-    is $op, 0,
-        'Moving and renaming should only return the correct status';
-
-    # Source and destination path is the same.
-    ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
-    is $op, 3,
-        'Attempting to overwrite a file with itself should only return the '
-      . 'correct status';
-
-    # Same file already at destination.
-    ($op, $src_path, $dst_path) = $self->same_file_there( $man );
-    is $op, 2,
-        'Overwriting the same file at the destintaion should only return the '
-      . 'correct status';
-
-    # Different file already at destination.
-    ($op, $src_path, $dst_path) = $self->diff_file_there( $man );
-    is $op, 2,
-        'Overwriting a different file at the destination should only return '
-      . 'the correct status';
 }
 
 sub move_and_rename_c_nf : Tests {
@@ -215,43 +186,10 @@ sub move_and_rename_c_nf : Tests {
     my $man   = $self->class_to_test->new( commit => 1, forced => 0 );
     my ($op, $src_path, $dst_path);
     
-    diag 'Manager configuration: commit, NO forced';
+    diag 'Manager configuration: commit, NON-forced';
 
-    # Move: src/test.jpg => temp/2013.03/test.jpg
-    ($op, $src_path, $dst_path) = $self->move_only( $man );
-    ok $op == 0 && -e $dst_path,
-        'Moving only should preserve original filename and return the correct '
-      . 'status';
-
-    # Rename: temp/2013.03/test.jpg => temp/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->rename_only( $man );
-    ok $op == 0 && -e $dst_path,
-        'Renaming only should leave file at the same location and return the '
-      . 'correct status';
-    
-    # Move and Rename: temp/2013.03/img-20130319-160753.jpeg => dest/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->move_and_rename( $man );
-    ok $op == 0 && -e $dst_path,
-        'Moving and renaming should work together and returnt the correct '
-      . 'status';
-
-    # Source and destination path is the same.
-    ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
-    is $op, 3,
-        'Attempting to overwrite a file with itself should only return the '
-      . 'correct status';
-
-    # Same file already at destination.
-    ($op, $src_path, $dst_path) = $self->same_file_there( $man );
-    is $op, 2,
-        'Overwriting the same file at the destintaion should only return the '
-      . 'correct status';
-
-    # Different file already at destination.
-    ($op, $src_path, $dst_path) = $self->diff_file_there( $man );
-    is $op, 2,
-        'Overwriting a different file at the destination should only return '
-      . 'the correct status';
+    $self->test_move_and_rename_c( $man );
+    $self->test_overwrite_nf( $man );
 }
 
 sub move_and_rename_nc_f : Tests {
@@ -259,38 +197,25 @@ sub move_and_rename_nc_f : Tests {
     my $man   = $self->class_to_test->new( commit => 0, forced => 1 );
     my ($op, $src_path, $dst_path);
 
-    diag 'Manager configuration: NO commit, forced';
+    diag 'Manager configuration: NON-commit, forced';
     
-    # Move: src/test.jpg => temp/2013.03/test.jpg
-    ($op, $src_path, $dst_path) = $self->move_only( $man );
-    is $op, 0,
-        'Moving should only return the correct status';
-
-    # Rename: temp/2013.03/test.jpg => temp/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->rename_only( $man );
-    is $op, 0,
-        'Renaming should only return the correct status';
-    
-    # Move and Rename: temp/2013.03/img-20130319-160753.jpeg => dest/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->move_and_rename( $man );
-    is $op, 0,
-        'Moving and renaming should only return the correct status';
+    $self->test_move_and_rename_nc( $man );
 
     # Source and destination path is the same.
     ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
-    is $op, 3,
+    ok $op == 3 && -e $src_path && -e $dst_path,
         'Attempting to overwrite a file with itself should only return the '
       . 'correct status';
 
     # Same file already at destination.
     ($op, $src_path, $dst_path) = $self->same_file_there( $man );
-    is $op, 2,
-        'Overwriting the same file at the destintaion should only return the '
-      . 'correct status';
+    ok $op == 2 && -e $src_path && -e $dst_path,
+        'Attempting to overwrite the same file at the destintaion should only '
+      . 'return the correct status';
 
     # Different file already at destination.
     ($op, $src_path, $dst_path) = $self->diff_file_there( $man );
-    is $op, 1,
+    ok $op == 1 && -e $src_path && -e $dst_path,
         'Overwriting a different file at the destination should only return '
       . 'the correct status';
 }
@@ -301,49 +226,141 @@ sub move_and_rename_c_f : Tests {
     my ($op, $src_path, $dst_path);
     
     diag 'Manager configuration: commit, forced';
-
-    # Move: src/test.jpg => temp/2013.03/test.jpg
-    ($op, $src_path, $dst_path) = $self->move_only( $man );
-    ok $op == 0 && -e $dst_path,
-        'Moving only should preserve original filename and return the correct '
-      . 'status';
-
-    # Rename: temp/2013.03/test.jpg => temp/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->rename_only( $man );
-    ok $op == 0 && -e $dst_path,
-        'Renaming only should leave file at the same location and return the '
-      . 'correct status';
-    
-    # Move and Rename: temp/2013.03/img-20130319-160753.jpeg => dest/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->move_and_rename( $man );
-    ok $op == 0 && -e $dst_path,
-        'Moving and renaming should work together and returnt the correct '
-      . 'status';
+   
+    $self->test_move_and_rename_c( $man );
 
     # Source and destination path is the same.
     ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
-    is $op, 3,
+    ok $op == 3 && -e $src_path && -e $dst_path,
         'Attempting to overwrite a file with itself should only return the '
       . 'correct status';
 
     # Same file already at destination.
     ($op, $src_path, $dst_path) = $self->same_file_there( $man );
-    is $op, 2,
+    ok $op == 2 && -e $src_path && -e $dst_path,
+        'Attempting to overwrite the same file at the destintaion should only '
+      . 'return the correct status';
+
+    # Different file already at destination.
+    ($op, $src_path, $dst_path) = $self->diff_file_there( $man );
+    ok $op == 1 && ! -e $src_path && -e $dst_path,
+        'Overwriting a different file at the destination should return the '
+      . 'correct status';
+}
+
+# Move and rename related tests are extracted out into two subroutines bellow,
+# as the test are identical for managers with the same commit mode regardless
+# of their forced mode flag (i.e. a commit & *non-forced* mode manager requires
+# the same tests as a commit & *forced* one).
+
+# Runs:
+#   - move only
+#   - rename only
+#   - move and rename
+#
+# tests for *non-commit* mode managers.
+#
+# @param [in] $man  manager to test
+sub test_move_and_rename_nc {
+    my ($self, $man) = @_;
+    my ($op, $src_path, $dst_path);
+
+    # Needs commit mode manager.
+    croak 'Needs non-commit mode manager' unless ( ! $man->do_commit );
+
+    # Move: src/test.jpg => temp/2013.03/test.jpg
+    ($op, $src_path, $dst_path) = $self->move_only( $man );
+    ok $op == 0 && -e $src_path && ! -e $dst_path,
+        'Moving should only return the correct status';
+
+    # Rename: temp/2013.03/test.jpg => temp/2013.03/img-20130319-160753.jpeg
+    ($op, $src_path, $dst_path) = $self->rename_only( $man );
+    ok $op == 0 && -e $src_path && ! -e $dst_path,
+        'Renaming should only return the correct status';
+    
+    # Move and Rename: temp/2013.03/img-20130319-160753.jpeg => dest/2013.03/img-20130319-160753.jpeg
+    ($op, $src_path, $dst_path) = $self->move_and_rename( $man );
+    ok $op == 0 && -e $src_path && ! -e $dst_path,
+        'Moving and renaming should only return the correct status';
+}
+
+# Runs:
+#   - move only
+#   - rename only
+#   - move and rename
+#
+# tests for *commit* mode managers.
+#
+# @param [in] $man  manager to test
+sub test_move_and_rename_c {
+    my ($self, $man) = @_;
+    my ($op, $src_path, $dst_path);
+    
+    # Needs commit mode manager.
+    croak 'Needs commit mode manager' unless ( $man->do_commit );
+
+    # Move: src/test.jpg => temp/2013.03/test.jpg
+    ($op, $src_path, $dst_path) = $self->move_only( $man );
+    ok $op == 0 && ! -e $src_path && -e $dst_path,
+        'Moving only should preserve original filename and return the correct '
+      . 'status';
+
+    # Rename: temp/2013.03/test.jpg => temp/2013.03/img-20130319-160753.jpeg
+    ($op, $src_path, $dst_path) = $self->rename_only( $man );
+    ok $op == 0 && ! -e $src_path && -e $dst_path,
+        'Renaming only should leave file at the same location and return the '
+      . 'correct status';
+    
+    # Move and Rename: temp/2013.03/img-20130319-160753.jpeg => dest/2013.03/img-20130319-160753.jpeg
+    ($op, $src_path, $dst_path) = $self->move_and_rename( $man );
+    ok $op == 0 && ! -e $src_path && -e $dst_path,
+        'Moving and renaming should work together and returnt the correct '
+      . 'status';
+}
+
+# Runs:
+#   - attempt to overwrite file with itself
+#   - the same file is already at the destination
+#   - a different file is already at the destination
+#
+# tests for non-forced mode managers.
+#
+# @param [in] $man  manager to test
+sub test_overwrite_nf {
+    my ($self, $man) = @_;
+    my ($op, $src_path, $dst_path);
+    
+    # Needs non-forced mode manager.
+    croak 'Needs non-forced mode manager' unless ( ! $man->is_forced );
+    
+    # Source and destination path is the same.
+    ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
+    ok $op == 3 && -e $src_path && -e $dst_path,
+        'Attempting to overwrite a file with itself should only return the '
+      . 'correct status';
+
+    # Same file already at destination.
+    ($op, $src_path, $dst_path) = $self->same_file_there( $man );
+    ok $op == 2 && -e $src_path && -e $dst_path && compare( $src_path, $dst_path ) == 0,
         'Overwriting the same file at the destintaion should only return the '
       . 'correct status';
 
     # Different file already at destination.
     ($op, $src_path, $dst_path) = $self->diff_file_there( $man );
-    is $op, 1,
+    ok $op == 2 && -e $src_path && -e $dst_path && compare( $src_path, $dst_path ) == 1,
         'Overwriting a different file at the destination should only return '
       . 'the correct status';
 }
+
+# The six individual operations are encapsulated into separate subroutines
+# below.
 
 # Move file[0] => temp/2013.03/test.jpg
 sub move_only {
     my ($self, $man) = @_;
     my $file = $self->default_files->[0];
 
+    my $src_path = $file->get_path;
     my $dst_path = File::Spec->catfile(
         $self->temp_dir, 'temp/2013.03', $file->get_basename,
     );
@@ -352,7 +369,7 @@ sub move_only {
         location_temp => File::Spec->catfile( $self->temp_dir, 'temp/%Y.%m', ),
     );
 
-    return ($op, $file->get_path, $dst_path);
+    return ($op, $src_path, $dst_path);
 }
 
 # Rename file[0] => img-20130319-160753.jpeg
@@ -360,6 +377,7 @@ sub rename_only {
     my ($self, $man) = @_;
     my $file = $self->default_files->[0];
 
+    my $src_path = $file->get_path;
     my $dst_path = File::Spec->catfile(
         $file->get_dir, 'img-20130319-160753.jpeg',
     );
@@ -369,7 +387,7 @@ sub rename_only {
         use_libmagic  => 1,
     );
 
-    return ($op, $file->get_path, $dst_path);
+    return ($op, $src_path, $dst_path);
 }
 
 # Move & Rename file[0] => dest/2013.03/img-20130319-160753.jpeg
@@ -377,6 +395,7 @@ sub move_and_rename {
     my ($self, $man) = @_;
     my $file = $self->default_files->[0];
 
+    my $src_path = $file->get_path;
     my $dst_path = File::Spec->catfile(
         $self->temp_dir, 'dest/2013.03', 'img-20130319-160753.jpeg',
     );
@@ -387,7 +406,7 @@ sub move_and_rename {
         use_libmagic  => 1,
     );
 
-    return ($op, $file->get_path, $dst_path);
+    return ($op, $src_path, $dst_path);
 }
 
 # Move file[1] => src/test2.jpg
@@ -395,10 +414,11 @@ sub src_eq_dest {
     my ($self, $man) = @_;
     my $file = $self->default_files->[1];
 
+    my $src_path = $file->get_path;
     my $dst_path = $file->get_path;
     my $op = $man->move_and_rename( image => $file );
 
-    return ($op, $file->get_path, $dst_path);
+    return ($op, $src_path, $dst_path);
 }
 
 # Move file[1] => src_copy/test2.jpg
@@ -406,6 +426,7 @@ sub same_file_there {
     my ($self, $man) = @_;
     my $file = $self->default_files->[1];
 
+    my $src_path = $file->get_path;
     my $dst_path = File::Spec->catfile(
         $self->temp_dir, 'src_copy', $file->get_basename,
     );
@@ -414,7 +435,7 @@ sub same_file_there {
         location_temp => File::Spec->catfile( $self->temp_dir, 'src_copy'),
     );
 
-    return ($op, $file->get_path, $dst_path);
+    return ($op, $src_path, $dst_path);
 }
 
 # Move and rename file[1] => src_copy/test.jpg
@@ -422,6 +443,7 @@ sub diff_file_there {
     my ($self, $man) = @_;
     my $file = $self->default_files->[1];
 
+    my $src_path = $file->get_path;
     my $dst_path = File::Spec->catfile(
         $self->temp_dir, 'src_copy', 'test.jpg',
     );
@@ -431,7 +453,7 @@ sub diff_file_there {
         location_temp => File::Spec->catfile( $self->temp_dir, 'src_copy'),
     );
 
-    return ($op, $file->get_path, $dst_path);
+    return ($op, $src_path, $dst_path);
 }
 
 1;
