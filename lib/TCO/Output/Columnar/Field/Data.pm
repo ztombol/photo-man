@@ -65,12 +65,12 @@ sub _build_truncator {
     # TODO: middle truncation
     my $method = ( $align eq 'left'   ) ? 'end'
                : ( $align eq 'centre' ) ? 'end'
-               : 'beginning';
+               :                          'beginning';
     
-    return TCO::String::Truncator->new({
+    return TCO::String::Truncator->new(
         method => $method,
         length => $self->_get_width,
-    });
+    );
 }
 
 # Produces string representation of field.

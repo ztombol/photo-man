@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-photo-man.pl - Simple photo library management script
+photo-man.pl - A simple photo library management script written in Perl 5
 
 =head1 VERSION
 
@@ -10,64 +10,137 @@ VERSION 0.1
 
 =head1 SYNOPSIS
 
-photo-man.pl [OPTIONS] (FILE... | REGEX)
+photo-man.pl [OPTIONS] FILE...
 
 =head1 DESCRIPTION
 
-photo-man is a utility to make a few photo library maintenance task easier on
-the Linux platform.
+C<photo-man> is a utility that aims to make command line based photo library
+management easier on the Linux platform.
 
-It can correct the filesystem's modification timestamp by setting it to the
-creation date found in the photo's EXIF metadata, which is extracted using the
-excellent L<Image::ExifTool> module (see http://sno.phy.queensu.ca/~phil/exiftool/).
+C<photo-man> can set the file system's modification timestamp of images to the
+time they were taken, i.e. to C<EXIF DateTimeDigitized>. The script can also
+sort and rename images based on the same timestamp, and guess the extension
+using the file's magic number.
 
-It also enables sorting large amount of photo's based on their creation time
-stamp.
+To access embedded metadata of images, C<photo-man> uses the excellent
+L<Image::ExifTool> module (see http://sno.phy.queensu.ca/~phil/exiftool/).
 
 =head1 ARGUMENTS
 
 The script takes one or more files as arguments. Files can be specified by
-listing each one as an additional argument or using a regular expression. The
-order of processing is determined by the system's locale. 
+name or as globs.
+
+    photo-man --rename 'img-\%Y\%m\%d-\%H\%M\%S' beach.jpeg ~/photos/*.jpg
+
+The order of processing is determined by the system's locale. 
 
 =head1 OPTIONS
 
-Mandatory arguments to short options are mandatory for long options as well.
+Mandatory arguments are necessary for both short and long options.
 
 =over
 
 =item -t, --touch=TIME_ZONE
 
-Set the file system's modification timestamp to the EXIF creation timestamp.
-Since EXIF can not handle time zone information, the original time zone in
-which the photo was taken has to be manually specified.
+Set the file system's modification timestamp to B<EXIF DateTimeDigitised>
+shifted to the local time zone. Since EXIF can not handle time zone
+information, the original time zone where the photo was taken needs to be
+manually specified. The C<TIME_ZONE> argument has to be specified in a format
+accepted by L<DateTime|DateTIme/"DateTime-E<gt>new(_..._)">.'
 
-=item -m, --move=PATTERN
+    photo-man --touch='Asia/Tokyo' photos/*     # Olson DB time zone name
+    photo-man --touch='+0900' photos/*          # offset string
 
-Move input files based on a user specified PATTERN, which is a
-L<strtime pattern|DateTime/"strftime Patterns"> from the L<DateTime> module.
-For example:
+If B<'local'> is specified as the original time zone, the EXIF timestamp is
+used directly without first converting it into the local time zone.
 
-    photo-man -m '%Y.%m' *.jpeg
+=item -m, --move=TEMPLATE
 
-will move all images with jpeg extension in the current directory to
-directories that consist of the year, a dot and the month in which the photo
-was taken.
+Move files to a new location specified by a template referencing parts of the
+C<EXIF DateTimeDigitised> timestamp. Filenames are preserved and directories
+are created as necessary. In addition to any character allowed in filenames by
+the file system and slashes, the C<TEMPLATE> can contain
+L<strtime format strings|DateTime/"strftime Patterns"> to enable inserting
+timestamp elements into directory names.
 
-    image-1.jpeg   2013-07-21 16:21:43  ->  2013.07/image-1.jpeg
-    image-2.jpeg   2013-06-30 08:32:00  ->  2013.06/image-2.jpeg
-    image-3.jpeg   2013-07-18 11:44:05  ->  2013.07/image-3.jpeg
+For example, the command below will move all images with jpeg extension in the
+current directory to separate directories based on which year, month and day
+they were taken.
+
+    photo-man -m '\%Y/\%m.%d' *.jpeg
+
+This command would move the files with the given timestamps on the left to the
+locations on the right, while preserving filenames and creating the necessary
+directories.
+
+    image-1.jpeg   2013-07-21 16:21:43  ->  2013/07.21/image-1.jpeg
+    image-2.jpeg   2013-06-30 08:32:00  ->  2013/06.30/image-2.jpeg
+    image-3.jpeg   2013-07-21 11:44:05  ->  2013/07.21/image-3.jpeg
+
+=item -r, --rename=TEMPLATE
+
+Rename files in-place, leaving them at their current location. Similarly to the
+C<--move> option, the new filename is specified by a template referencing parts
+of the C<EXIF DateTimeDigitised> timestamp, and the C<TEMPLATE> works the same
+way.
+
+For example, the command below will rename all images with JPG extension in the
+directory issued to names that contain the timestamp from the year all the way
+down to the second.
+
+    photo-man --rename 'img-\%Y\%m\%d-\%H\%M\%S' *.JPG
+
+The command would rename the files with the given timestamps on the left to the
+named on the right, while leaving them at their original location.
+
+    image-1.jpeg   2013-07-21 16:21:43  ->  img-20130721-162143.JPG
+    image-2.jpeg   2013-06-30 08:32:00  ->  img-20130630-083200.JPG
+    image-3.jpeg   2013-07-21 11:44:05  ->  img-20130721-114405.JPG
+
+Note that C<TEMPLATE> does not contain the extension. By default the string
+after the last dot in the filename is extracted and used as the extension for
+the new filename. You can alter this behaviour and use the magic number in the
+file to guess the proper extension. See C<--use-magic> for details.
+
+=item -u, --use-magic
+
+This option can be used together with C<--rename> to determine the file's
+extension using it's magic number. Obviously, this will correct the extension
+of files that are named incorrectly or missing altogether.
+
+The command bellow corrects the extension of each file in the directory issued
+while preserving the remaining portion of the filename.
+
+    photo-man --use-magic --rename -- *
+
+Note, the double hyphens are necessary to avoide C<--rename> using the C<*> as
+its template instead of letting it specify every file in the current directory
+as inputs. Also, the template argument to C<--rename> is optional only in this
+case, when C<--use-magic> is used to fix the extensions, without otherwise
+renaming files.
+
+For example, the command above would rename files on the left to the ones on
+the right.
+
+    beach.jpg     ->  beach.jpeg
+    diving        ->  diving.jpeg
+    octopus.TIFF  ->  octopus.tiff
+
+When this option is not specified, the string after the last dot of the
+filename is used as the extension.
 
 =item -c, --commit
 
-Make changes. By default the program just makes a dry-run and outputs what
-would be changed.
+By default, photo-man performs a dry-run that outputs what would have been
+done, without making any changes to the file system. The dry-run can be used to
+tune the command until the desired configuration is achieved, before committing
+the changes to the file system.
 
 =item -f, --force
 
-Force execution of destructive operations, including overwriting files while
-moving or renaming. By default irreversible operations are skipped and
-reported.
+By default, destructive operations are not executed only reported. To avoid
+data loss irreversible operations, such as overwriting of files, are performed
+only when this option is explicitly specified.
 
 =item -v, --verbose
 
