@@ -26,85 +26,63 @@ use TCO::Image::PhotoMan;
 
 
 ###############################################################################
-# Default values of Options and their Arguments.
-###############################################################################
-
-my $opt_touch = 0;                  # Fix timestamp
-my $arg_touch_tz = '';              # - original time zone
-# FIXME: Why do we need to escape %s? \%M instead of %M.
-my $opt_move = 0;                   # Move files
-my $arg_move_template = undef;      # - template of new locations
-# FIXME: Why do we need to escape %s? \%M instead of %M.
-my $opt_rename = 0;                 # Rename files
-my $arg_rename_template = undef;    # - template of new filenames
-
-my $opt_forced = 0;                 # Execute destructive operations?
-my $opt_commit = 0;                 # Make changes or do a dry-run?
-my $opt_help = 0;                   # Print help
-my $opt_man  = 0;                   # Print complete documentation
-my $opt_verbose = 0;                # Should we print detailed output?
-
-
-###############################################################################
 # Parse options and check arguments
 ###############################################################################
 
 # Parse options.
 my $parser = Getopt::Long::Parser->new;
-$parser->getoptions('touch=s' => \&handler_touch,
-                    'move=s'  => \&handler_move,
-                    'commit'  => \$opt_commit,
-                    'force'   => \$opt_forced,
-                    'verbose' => \$opt_verbose,
-                    'help'    => \$opt_help,
-                    'man'     => \$opt_man,) or pod2usage(2);
+$parser->getoptions(
+    'touch=s'   => \&handler,   # Fix timestamp + original time zone
+    'move=s'    => \&handler,   # Move files    + template of new location
+    'rename:s'  => \&handler,   # Rename files  + template of new filename
+    'use-magic' => \&handler,   # Use magic number to get extension
+    'commit'    => \&handler,   # Make changes, not just a dry run
+    'force'     => \&handler,   # Perform destructive operations, e.g. overwrite
+    'verbose'   => \&handler,   # Print verbose output
+    'help'      => \&handler,   # Display help
+    'man'       => \&handler,   # Show the complete documentation
+) or pod2usage(2);
 
-# Argument handlers.
-sub handler_move {
-    $opt_move = 1;
-    my $opt_name = shift;
-    $arg_move_template = shift;
+my %args;
+sub handler {
+    my ($opt_name, $opt_arg) = @_;
+    $args{$opt_name} = $opt_arg;
 }
 
-sub handler_touch {
-    $opt_touch = 1;
-    my $opt_name = shift;
-    $arg_touch_tz = shift;
-}
+# See if we have a valid configuration.
+check_config( %args );
 
 # Displaying help or complete documentation.
-pod2usage( -input => 'docs.pod', -verbose => 1) if $opt_help;
-pod2usage( -input => 'docs.pod', -verbose => 2, -exitval => 0) if $opt_man;
+pod2usage( -input => 'docs.pod', -verbose => 1) if $args{ help };
+pod2usage( -input => 'docs.pod', -verbose => 2, -exitval => 0) if $args{ man };
 
 # Check input files.
 pod2usage( -input => 'docs.pod', -verbose => 2,
            -message => "$0: No input files are specified.") if (@ARGV == 0 && -t STDIN);
 
-# TODO: add a step to validate configuration. magic+rename optional param etc.
-#       that thing needs testing and implementation somewhere
 
 ###############################################################################
 # Main
 ###############################################################################
 
 # Initialise output formatters.
-my ( $header, $record ) = init_output();
+my ( $header, $record ) = init_output( %args );
 
 # Print arguments if in verbose mode. 
-print_args() if $opt_verbose;
+print_args() if $args{ verbose };
 
 # Create Photo Manager instance.
-my $pm = TCO::Image::PhotoMan->new({
-    commit => $opt_commit,
-    forced => $opt_forced,
-});
+my $pm = TCO::Image::PhotoMan->new(
+    commit => $args{ commit },
+    forced => $args{ forced },
+);
 
 # Processing each file.
 print ":: Processing images\n";
 
 # Print column header.
-if ($opt_verbose) { }
-else              { $header->print(); }
+if ($args{ verbose } ) { }
+else                   { $header->print(); }
 
 # Assemble pattern that will be used for globbing.
 my $pattern = '{' . join(',', @ARGV) . '}';
@@ -114,26 +92,28 @@ while (my $file = glob("$pattern")) {
     my $image = TCO::Image::File->new( path => $file );
 
     # Print file name.
-    if ($opt_verbose) { $header->print( $file ); }
-    else              { $record->print( $file ); }
+    if ($args{ verbose }) { $header->print( $file ); }
+    else                  { $record->print( $file ); }
 
     # Acions.
-    op_move_and_rename( $pm, $image, $arg_move_template, $arg_rename_template ) if ( $opt_move );
-    op_fix_timestamp( $pm, $image, $arg_touch_tz ) if ($opt_touch);
+    op_move_and_rename( $pm, $image, $args{ move }, $args{ rename } )
+    	if ( $args{ move } );
+    op_fix_timestamp( $pm, $image, $args{ touch } )
+    	if ( $args{ touch } );
 
     # Print overall result of all operations.
-    if ( $opt_verbose ) { }
-    else                { $record->print('done'); }
+    if ( $args{ verbose } ) { }
+    else                    { $record->print('done'); }
 }
 
 # Print summary
-if ($opt_verbose) {
+if ($args{ verbose } ) {
     # TODO: print summary, number of moved files etc.
     #print ":: Summary\n";
 }
 
 # Warn if it was just a dry run
-if (not $opt_commit) {
+if (not $args{ commit }) {
     print <<"WARNING";
 :: Warning
 
@@ -168,7 +148,7 @@ sub op_move_and_rename {
 
     # Print output.
     my $new_path = $image->get_path;
-    if ( $opt_verbose ) {
+    if ( $args{ verbose } ) {
         $record->print( 'move' );
 
           $status == 0 ? $record->print('file moved to', $new_path)
@@ -209,7 +189,7 @@ sub op_fix_timestamp {
     my $new_time = $image->get_fs_meta->mtime;
 
     # Print output.
-    if ( $opt_verbose ) {
+    if ( $args{ verbose } ) {
         $record->print( 'time' );
 
           $status == 0 ? $record->print('timestamp changed to', $new_time)
@@ -230,76 +210,77 @@ sub op_fix_timestamp {
 # Auxiliary functions
 ###############################################################################
 
-# Print all relevant options and arguments passed to the script.
+# Validates the combination of the options and arguments passed to the script.
 #
-# NOTE: This functions accesses `options and arguments' in the global scope!
+# @param [in] %args  options and their arguments
+sub check_config {
+    my %args = @_;
+
+    # The argument to --rename is optional only if --use-magic is also used.
+    if ( defined $args{ rename } && ! $args{ rename } && ! $args{ 'use-magic' } ) {
+        die 'The --rename option requires an argument';
+    }
+}
+
+# Prints all relevant options and arguments passed to the script.
+#
+# @param [in] %args  options and their arguments
 sub print_args {
-    # Output format.
+    my %args = @_;
+
     my $out = TCO::Output::Columnar::Format->new(
         format => "@>>>>>>>>> = @<\n",
     );
 
-    # Mode: make changes or just show what would be done.
-    $out->print('mode', $opt_commit ? 'commit changes' : 'dry-run');
-
-    # Forced: perform destructive and irreversible operations, e.g. overwriting
-    # files while moving.
-    $out->print('forced', $opt_forced ? 'yes' : 'no');
-
-    # Timestamp fix.
-    $out->print('time zone', $arg_touch_tz) if $opt_touch;
-
-    # Moving/Copying photos to directories based on EXIF timestamp.
-    $out->print('template', $arg_move_template) if $opt_move;
+    $out->print('mode',      $args{ commit } ? 'commit changes' : 'dry-run');
+    $out->print('forced',    $args{ forced } ? 'yes'            : 'no');
+    $out->print('time zone', $args{ touch }) if defined $args{ touch };
+    $out->print('template',  $args{ move } ) if defined $args{ move };
 }
-
 
 # Initialises output formatter objects. An array of two object are created
 # depending on actions the script will execute and verbosity of the output.
 #
-# Normal:
-#   1. column headers
-#   2. filename and operation results
-#
-# Verbose:
-#   1. filename
-#   2. operation name and details. 
+#                | header         | record
+# ---------------+----------------+--------------------------------
+#  normal (cell) | column headers | filename and operation results
+# verbose (line) | filename       | operation details
 #
 # @returns ( header, record ) output objects in this order
-#
-# NOTE: This function accesses `options and arguments' from global scope!
 sub init_output {
+    my %args = @_;
+
     my $header;
     my $record;
 
-    if ( $opt_verbose ) {
+    if ( $args{ verbose } ) {
         # Verbose (vertical) output. Print messages on their own separate line.
         $header = TCO::Output::Columnar::Format->new( format  => ":: @<\n" );
         $record = TCO::Output::Columnar::Format->new(
-            format  => "[@|||||] @>>>>>>>>>>>> = @<<<<<<<\r[@|||||]\n",
-            control => "        ^             ^          ^         ",
+            format  => "[@|||||] @>>>>>>>>>>>> = @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\r[@|||||]\n",
+            control => "        ^             ^                                       ^         ",
         );
     }
     else {
         # Normal (horizontal) output. Print messages on adjecent cells on the
-	# same line.
+        # same line.
 
         # Base: result and filename.
         $header = TCO::Output::Columnar::Format->new(
-            format  => "[result] [ filename and path                          ]",
+            format  => "[result] [ original path                       ]",
         );
         $record = TCO::Output::Columnar::Format->new(
-            format  => "[      ] @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+            format  => "[      ] @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
         );
      
-        # Move.
-        if ( $opt_move ) {
-            $header->append( format => " [  move  ]" );
-            $record->append( format => " @|||||||||" );
+        # Move and rename.
+        if ( $args{ move } || $args{ rename } ) {
+            $header->append( format => " [ new path                            ]" );
+            $record->append( format => " @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" );
         }
 
         # Timestamp fix.
-        if ( $opt_touch ) {
+        if ( $args{ touch } ) {
             $header->append( format  => " [  time  ]",
                              control => "^          " );
             $record->append( format  => " @|||||||||" );
