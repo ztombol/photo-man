@@ -49,7 +49,8 @@ sub handler {
     $args{$opt_name} = $opt_arg;
 }
 
-# See if we have a valid configuration.
+# Print and then see if we have a valid configuration.
+print_config( %args );
 check_config( %args );
 
 # Displaying help or complete documentation.
@@ -68,9 +69,6 @@ pod2usage( -input => 'docs.pod', -verbose => 2,
 # Initialise output formatters.
 my ( $header, $record ) = init_output( %args );
 
-# Print arguments if in verbose mode. 
-print_args() if $args{ verbose };
-
 # Create Photo Manager instance.
 my $pm = TCO::Image::PhotoMan->new(
     commit => $args{ commit },
@@ -81,8 +79,8 @@ my $pm = TCO::Image::PhotoMan->new(
 print ":: Processing images\n";
 
 # Print column header.
-if ($args{ verbose } ) { }
-else                   { $header->print(); }
+if ( $args{ verbose } ) { }
+else                    { $header->print(); }
 
 # Assemble pattern that will be used for globbing.
 my $pattern = '{' . join(',', @ARGV) . '}';
@@ -96,31 +94,30 @@ while (my $file = glob("$pattern")) {
     else                  { $record->print( $file ); }
 
     # Acions.
-    op_move_and_rename( $pm, $image, $args{ move }, $args{ rename } )
-    	if ( $args{ move } );
+    op_move_and_rename( $pm, $image, $args{ move }, $args{ rename },
+            $args{'use-magic'} )
+    	if ( defined $args{ move } || defined $args{ rename } );
     op_fix_timestamp( $pm, $image, $args{ touch } )
-    	if ( $args{ touch } );
+    	if ( defined $args{ touch } );
 
     # Print overall result of all operations.
-    if ( $args{ verbose } ) { }
+    if ( $args{ verbose } ) { print "\n"; }
     else                    { $record->print('done'); }
 }
 
 # Print summary
-if ($args{ verbose } ) {
-    # TODO: print summary, number of moved files etc.
-    #print ":: Summary\n";
-}
+print ":: Summary\n";
+
+# TODO: print summary, number of moved files etc.
 
 # Warn if it was just a dry run
 if (not $args{ commit }) {
     print <<"WARNING";
-:: Warning
 
 !!! HEADS-UP !!!
 
-This was just a dry-run! If you want to make the above mentioned changes
-specify the `--commit' option in addition on the command line!
+This was just a dry-run! If you want to make the changes above add `--commit'
+to your command!
 
     \$ $0 --commit ...
 
@@ -137,25 +134,30 @@ WARNING
 # NOTE: this subroutine accesses variables from global scope!
 #       $record
 sub op_move_and_rename {
-    my ($manager, $image, $location_temp, $filename_temp) = @_;
+    my ($manager, $image, $location_temp, $filename_temp, $use_libmagic) = @_;
 
     # Perform action.
-    my $status = $manager->move_and_rename(
+    # FIXME: this is a work around of getting results in dry-run, will be
+    #        removeduntil after Image::File implements implement journaling
+    #        support
+    my ($status, $new_path) = $manager->move_and_rename(
+    #my $status = $manager->move_and_rename(
         image         => $image,
         location_temp => $location_temp,
         filename_temp => $filename_temp,
+        use_libmagic  => $use_libmagic,
     );
+    #my $new_path = $image->get_path;
 
     # Print output.
-    my $new_path = $image->get_path;
     if ( $args{ verbose } ) {
         $record->print( 'move' );
 
-          $status == 0 ? $record->print('file moved to', $new_path)
-        : $status == 1 ? $record->print('file overwritten at', $new_path)
-        : $status == 2 ? $record->print('same file already at', $new_path)
-        : $status == 3 ? sub { $record->print("can't move to the same location");
-                               $record->reset(); }
+          $status == 0 ? $record->print('moved', $new_path)
+        : $status == 1 ? $record->print('overwritten', $new_path)
+        : $status == 2 ? $record->print('same file at', $new_path)
+        : $status == 3 ? sub { $record->print("already at");
+                               $record->reset(); }->()
         : $status ==-1 ? croak "MOVE: error while moving file"
         :                croak "MOVE: unhandled return value $status";
     }
@@ -163,10 +165,12 @@ sub op_move_and_rename {
           $status == 0 ? $record->print('move')
         : $status == 1 ? $record->print('over')
         : $status == 2 ? $record->print('same')
-        : $status == 3 ? $record->print('src=dst')
+        : $status == 3 ? $record->print('there')
         : $status ==-1 ? croak "MOVE: error while moving file"
         :                croak "MOVE: unhandled return value $status";
+        $record->print( $new_path );
     }
+    
 }
 
 # Fixes the timestamp of a file by setting it to the `EXIF DateTimeDigitised'
@@ -182,24 +186,27 @@ sub op_fix_timestamp {
     my ($manager, $image, $timezone) = @_;
 
     # Set new timestamp.
-    my $status = $manager->fix_timestamp(
+    # FIXME: this is a work around until we implement journaling on file
+    #        operations
+    my ($status, $new_time) = $manager->fix_timestamp(
+    #my $status = $manager->fix_timestamp(
         image    => $image,
         timezone => $timezone,
     );
-    my $new_time = $image->get_fs_meta->mtime;
+    #my $new_time = $image->get_fs_meta->mtime;
 
     # Print output.
     if ( $args{ verbose } ) {
         $record->print( 'time' );
 
-          $status == 0 ? $record->print('timestamp changed to', $new_time)
-        : $status == 1 ? sub { $record->print("timestamp correct");
-                               $record->reset(); }
+          $status == 0 ? $record->print('changed', $new_time)
+        : $status == 1 ? sub { $record->print("correct");
+                               $record->reset(); }->()
         : $status ==-1 ? croak "MOVE: error while moving file"
         :                croak "MOVE: unhandled return value $status";
     }
     else {
-          $status == 0 ? $record->print('changed')
+          $status == 0 ? $record->print( $new_time )
         : $status == 1 ? $record->print('--')
         : $status ==-1 ? croak 'TOUCH: error while modifying timestamp'
         :                croak 'TOUCH: unhandled return value $status';
@@ -217,25 +224,43 @@ sub check_config {
     my %args = @_;
 
     # The argument to --rename is optional only if --use-magic is also used.
-    if ( defined $args{ rename } && ! $args{ rename } && ! $args{ 'use-magic' } ) {
+    if ( defined $args{ rename } && $args{ rename } eq '' && ! $args{ 'use-magic' } ) {
         die 'The --rename option requires an argument';
+    }
+    
+    # Option --use-magic does not have any effect without --rename.
+    if ( ! defined $args{ rename } && $args{ 'use-magic' } ) {
+        die 'The --use-magic option can only be used together with --rename.';
     }
 }
 
 # Prints all relevant options and arguments passed to the script.
 #
 # @param [in] %args  options and their arguments
-sub print_args {
+sub print_config {
     my %args = @_;
 
+    print ":: Configuration\n";
     my $out = TCO::Output::Columnar::Format->new(
         format => "@>>>>>>>>> = @<\n",
     );
 
-    $out->print('mode',      $args{ commit } ? 'commit changes' : 'dry-run');
-    $out->print('forced',    $args{ forced } ? 'yes'            : 'no');
-    $out->print('time zone', $args{ touch }) if defined $args{ touch };
-    $out->print('template',  $args{ move } ) if defined $args{ move };
+    # Always.
+    $out->print('mode',   $args{ commit } ? 'commit changes' : 'dry-run');
+    $out->print('forced', $args{ forced } ? 'yes'            : 'no');
+
+    # Timestamp fixing.
+    $out->print('time zone', $args{ touch } ) if defined $args{ touch };
+
+    # Move and/or rename.
+    $out->print('location',  $args{ move }  ) if defined $args{ move };
+    $out->print('file name', $args{ rename } ne '' ? $args{ rename }
+            : "< original >")
+        if defined $args{ rename };
+    $out->print('magic',     $args{'use-magic'} ? 'yes' : 'no')
+        if defined $args{ rename };
+
+    print "\n";
 }
 
 # Initialises output formatter objects. An array of two object are created
@@ -250,15 +275,14 @@ sub print_args {
 sub init_output {
     my %args = @_;
 
-    my $header;
-    my $record;
+    my ($header, $record);
 
     if ( $args{ verbose } ) {
         # Verbose (vertical) output. Print messages on their own separate line.
-        $header = TCO::Output::Columnar::Format->new( format  => ":: @<\n" );
+        $header = TCO::Output::Columnar::Format->new( format  => "@<\n" );
         $record = TCO::Output::Columnar::Format->new(
-            format  => "[@|||||] @>>>>>>>>>>>> = @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\r[@|||||]\n",
-            control => "        ^             ^                                       ^         ",
+            format  => "[@|||||] @>>>>>>>>>>>> > @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n",
+            control => "        ^             ^                                        ",
         );
     }
     else {
@@ -267,23 +291,27 @@ sub init_output {
 
         # Base: result and filename.
         $header = TCO::Output::Columnar::Format->new(
-            format  => "[result] [ original path                       ]",
+            # This is SHORTER by ONE character so we can have a different
+            # trailing character depending if move/rename is specified or not.
+            #
+            #          v---------- complete length ----------v
+            format  => "[result] [ file                     "
+                     . ( ($args{move} || $args{rename}) ? " " : "]"),
         );
         $record = TCO::Output::Columnar::Format->new(
-            format  => "[      ] @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+            format  => "[      ] @<<<<<<<<<<<<<<<<<<<<<<<<<<<",
         );
      
         # Move and rename.
         if ( $args{ move } || $args{ rename } ) {
-            $header->append( format => " [ new path                            ]" );
-            $record->append( format => " @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<" );
+            $header->append( format => " > action > new path                   ]" );
+            $record->append( format => " >@|||||||> @<<<<<<<<<<<<<<<<<<<<<<<<<<<" );
         }
 
         # Timestamp fix.
         if ( $args{ touch } ) {
-            $header->append( format  => " [  time  ]",
-                             control => "^          " );
-            $record->append( format  => " @|||||||||" );
+            $header->append( format  => " [    timestamp    ]" );
+            $record->append( format  => " @||||||||||||||||||" );
         }
 
         # End of record: add line feed or overall result.

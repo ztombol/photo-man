@@ -309,7 +309,7 @@ sub _type_of_next {
 
 # Prints the supplied data formatted according to the fields of the formatter.
 # Mulitple pieces of data can be supplied that will be used in FIFO order and
-# fed into the data fields. Fields are processed until the first stop of data
+# fed into the data fields. Fields are processed until the first stop or data
 # field is encountered after the last piece of data is consumed. When called
 # without data, the subroutine will print literal fields up to the next data or
 # stop field.

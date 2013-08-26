@@ -98,6 +98,7 @@ sub attributes : Tests {
 
     my %default_attributes = (
         basename  => [ 'test.jpg' ],
+        filename  => [ 'test'     ],
         extension => [ 'jpg' , 0  ],
         extension => [ 'jpeg', 1  ],
         dir       => [ File::Spec->catfile( $self->temp_dir, 'src/' ) ],

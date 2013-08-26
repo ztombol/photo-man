@@ -94,10 +94,23 @@ sub get_basename {
     return (File::Spec->splitpath( $self->get_path ))[2];
 }
 
+# Returns the filename (basename without the extension and dot).
+#
+# @param [in] $0  file object
+#
+# @returns  filename without extension
+sub get_filename {
+    my $self = shift;
+    $self->get_path =~ m{([^/]+?).[^.]+\Z};
+    return $1;
+}
+
 # Returns the extension of the file (portion after the last dot).
 #
 # @param [in] $0  file object
 # @param [in] $1  use LibMagic to get extension?
+#
+# @returns  extension
 sub get_extension {
     my $self = shift;
     my $use_magic = shift;

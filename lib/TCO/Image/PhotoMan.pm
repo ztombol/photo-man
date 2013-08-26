@@ -104,7 +104,10 @@ sub move_and_rename {
     }
 
     # Return status code.
-    return $status;
+    # FIXME: this is a work around until we implement journaling on file
+    #        operations
+    return ($status, $new_file);
+    #return $status;
 }
 
 # Creates a path based on location (for directory) and filename templates (for
@@ -135,15 +138,15 @@ sub _make_path {
     my $use_libmagic  = shift;
    
     # Parent directory. 
-    my $new_location = ( defined $location_temp )
+    my $new_location = ( defined $location_temp && $location_temp ne '' )
       ? $self->_template_to_str( $image, $location_temp )
       : $image->get_dir;
 
     # Filename including extension.
-    my $new_filename = ( defined $filename_temp )
+    my $new_filename = (( defined $filename_temp && $filename_temp ne '' )
       ? $self->_template_to_str( $image, $filename_temp )
-        . '.' . $image->get_extension( $use_libmagic )
-      : $image->get_basename;
+      : $image->get_filename )
+        . '.' . $image->get_extension( $use_libmagic );
 
     return File::Spec->catfile( $new_location, $new_filename );
 }
@@ -221,11 +224,19 @@ sub fix_timestamp {
         != $fs_mtime->truncate( to => 'second') ) {
 
         # Needs to be fixed.
-	return $image->set_mod_time($img_mtime) if $self->do_commit;
+       	if ( $self->do_commit ) { $status = $image->set_mod_time($img_mtime) }
+        else                    { $status = 0; }
+    }
+    else {
+        # Timestamp correct.
+        $status = 1;
     }
 
     # Already correct.
-    return 1;
+    # FIXME: this is a work around until we implement journaling on file
+    #        operations
+    return ($status, $img_mtime);
+    #return $status;
 }
 
 __PACKAGE__->meta->make_immutable;
