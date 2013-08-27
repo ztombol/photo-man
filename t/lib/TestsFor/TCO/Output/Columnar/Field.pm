@@ -23,16 +23,12 @@ sub startup : Tests(startup) {
 sub setup : Tests(setup) {
     my $self  = shift;
     my $class = $self->class_to_test;
-
+    
     # First call the parent method.
     $self->next::method;
 
     # Instantiate default field object.
-    $self->default_field(
-        $class->new(
-            type => 'test',
-        )
-    );
+    $self->default_field( $self->create_default_field );
 }
 
 sub teardown : Tests(teardown) {
@@ -51,6 +47,16 @@ sub shutdown : Tests(shutdown) {
 
     # Finally, call parent method.
     $self->next::method;
+}
+
+# Instantiates default field object.
+sub create_default_field {
+    my $self  = shift;
+    my $class = $self->class_to_test;
+
+    return $class->new(
+        type => 'test',
+    );
 }
 
 sub constructor : Tests {

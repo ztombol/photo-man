@@ -1,8 +1,7 @@
 package TestsFor::TCO::Output::Columnar::Field::Data;
 
 use Test::Class::Most
-    parent      =>'TestsFor',
-    attributes  => [qw(default_field)];
+    parent      => 'TestsFor::TCO::Output::Columnar::Field';
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -21,13 +20,7 @@ sub setup : Tests(setup) {
     # First call the parent method.
     $self->next::method;
 
-    # Instantiate default field object.
-    $self->default_field(
-        $class->new(
-            width     => 20,
-            alignment => 'left',
-        )
-    );
+    # Setup code goes here...
 }
 
 sub teardown : Tests(teardown) {
@@ -46,6 +39,17 @@ sub shutdown : Tests(shutdown) {
 
     # Finally, call parent method.
     $self->next::method;
+}
+
+# Instantiates default field object.
+sub create_default_field {
+    my $self  = shift;
+    my $class = $self->class_to_test;
+
+    return $class->new(
+        width     => 20,
+        alignment => 'left',
+    );
 }
 
 sub as_string : Tests {
