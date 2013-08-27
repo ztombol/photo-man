@@ -122,18 +122,20 @@ sub fix_timestamp : Tests {
     my $man = $self->default_manager;
 
     # Set new timestamp.
-    is $man->fix_timestamp(
+    # TODO: remove the index after journaling is finished.
+    is( ($man->fix_timestamp(
             timezone => 'Asia/Tokyo',
             image    => $file,
-        ), 0,
-        'fixing file system modification timestamp should succeed';
+        ))[0], 0,
+        'fixing file system modification timestamp should succeed');
 
     # Test if time stamp was correctly set.
-    is $man->fix_timestamp(
+    # TODO: remove the index after journaling is finished.
+    is( ($man->fix_timestamp(
             timezone => 'Asia/Tokyo',
             image    => $file,
-        ), 1,
-        'file system modification timestamp should be up-to-date';
+        ))[0], 1,
+        'file system modification timestamp should be up-to-date');
 }
 
 # Test the moving and renaming subroutine when changes are not made to the
@@ -417,7 +419,8 @@ sub src_eq_dest {
 
     my $src_path = $file->get_path;
     my $dst_path = $file->get_path;
-    my $op = $man->move_and_rename( image => $file );
+    # TODO: remove the index after journaling is finished.
+    my $op = ($man->move_and_rename( image => $file ))[0];
 
     return ($op, $src_path, $dst_path);
 }
@@ -431,10 +434,11 @@ sub same_file_there {
     my $dst_path = File::Spec->catfile(
         $self->temp_dir, 'src_copy', $file->get_basename,
     );
-    my $op = $man->move_and_rename(
+    # TODO: remove the index after journaling is finished.
+    my $op = ($man->move_and_rename(
         image         => $file,
         location_temp => File::Spec->catfile( $self->temp_dir, 'src_copy'),
-    );
+    ))[0];
 
     return ($op, $src_path, $dst_path);
 }
@@ -448,11 +452,12 @@ sub diff_file_there {
     my $dst_path = File::Spec->catfile(
         $self->temp_dir, 'src_copy', 'test.jpg',
     );
-    my $op = $man->move_and_rename(
+    # TODO: remove the index after journaling is finished.
+    my $op = ($man->move_and_rename(
         image         => $file,
         filename_temp => 'test',
         location_temp => File::Spec->catfile( $self->temp_dir, 'src_copy'),
-    );
+    ))[0];
 
     return ($op, $src_path, $dst_path);
 }
