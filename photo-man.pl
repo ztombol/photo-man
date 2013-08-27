@@ -296,20 +296,21 @@ sub init_output {
             #
             #          v---------- complete length ----------v
             format  => "[result] [ file                     "
-                     . ( ($args{move} || $args{rename}) ? " " : "]"),
+                    . ( (defined $args{move} || defined $args{rename})
+                    ? " " : "]" ),
         );
         $record = TCO::Output::Columnar::Format->new(
             format  => "[      ] @<<<<<<<<<<<<<<<<<<<<<<<<<<<",
         );
      
         # Move and rename.
-        if ( $args{ move } || $args{ rename } ) {
+        if ( defined $args{ move } || defined $args{ rename } ) {
             $header->append( format => " > action > new path                   ]" );
             $record->append( format => " >@|||||||> @<<<<<<<<<<<<<<<<<<<<<<<<<<<" );
         }
 
         # Timestamp fix.
-        if ( $args{ touch } ) {
+        if ( defined $args{ touch } ) {
             $header->append( format  => " [    timestamp    ]" );
             $record->append( format  => " @||||||||||||||||||" );
         }
