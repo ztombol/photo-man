@@ -1,7 +1,28 @@
+#
+# Copyright (C)  2013  Zoltan Vass <zoltan.vass.2k6 (at) gmail (dot) com>
+#
+
+#
+# This file is part of photo-man.
+#
+# photo-man is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# photo-man is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with photo-man.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+
 # Field printing an arbitrary string aligned on an arbitrary number of
 # characters. Alignment and width are immutable and given at construction time.
 # The payload data is specified upon prining.
-
 package TCO::Output::Columnar::Field::Data;
 
 use Moose;

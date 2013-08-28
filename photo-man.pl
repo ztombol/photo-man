@@ -1,15 +1,42 @@
 #!/usr/bin/env perl
-# 
-# A simple Perl script to make a few photo library maintenance task easier on
-# the Linux platform.
+
 #
-# Features:
-#   * set file's last modification date to the time of digitalisation
-#   * rename and move files using the digitalisation timestamp
+# photo-man is a simple command line utility automating common photo library
+# management tasks, such as:
+#   - moving and renaming based on EXIF DateTimeDigitized timestamp
+#   - setting file system modificaion timestamp to EXIF DateTimeDigitized
 #
-# Author:  Zoltan Vass <zoltan.vass.2k6@gmail.com>
-# Licence: ?
+# For a complete list of features see the documentation by issuing
+# `photo-man --man'.
 #
+# photo-man, including test assests such as image files, and its documentation
+# is licenced under GPL version 3.
+#
+# Authors: Zoltan Vass <zoltan.vass.2k6 (at) gmail (dot) com>
+#
+
+
+#
+# Copyright (C)  2013  Zoltan Vass <zoltan.vass.2k6 (at) gmail (dot) com>
+#
+
+#
+# This file is part of photo-man.
+#
+# photo-man is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# photo-man is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with photo-man.  If not, see <http://www.gnu.org/licenses/>.
+#
+
 
 use strict;
 use warnings;
@@ -54,11 +81,11 @@ print_config( %args );
 check_config( %args );
 
 # Displaying help or complete documentation.
-pod2usage( -input => 'docs.pod', -verbose => 1) if $args{ help };
-pod2usage( -input => 'docs.pod', -verbose => 2, -exitval => 0) if $args{ man };
+pod2usage( -input => 'photo-man.pod', -verbose => 1) if $args{ help };
+pod2usage( -input => 'photo-man.pod', -verbose => 2, -exitval => 0) if $args{ man };
 
 # Check input files.
-pod2usage( -input => 'docs.pod', -verbose => 2,
+pod2usage( -input => 'photo-man.pod', -verbose => 2,
            -message => "$0: No input files are specified.") if (@ARGV == 0 && -t STDIN);
 
 
