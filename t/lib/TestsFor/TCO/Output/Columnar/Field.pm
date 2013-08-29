@@ -1,5 +1,5 @@
 #
-# Copyright (C)  2013  Zoltan Vass <zoltan.vass.2k6 (at) gmail (dot) com>
+# Copyright (C)  2013  Zoltan Vass <zoltan.tombol (at) gmail (dot) com>
 #
 
 #

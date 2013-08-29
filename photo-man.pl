@@ -12,12 +12,12 @@
 # photo-man, including test assests such as image files, and its documentation
 # is licenced under GPL version 3.
 #
-# Authors: Zoltan Vass <zoltan.vass.2k6 (at) gmail (dot) com>
+# Authors: Zoltan Vass <Zoltan Vass <zoltan.tombol (at) gmail (dot) com>
 #
 
 
 #
-# Copyright (C)  2013  Zoltan Vass <zoltan.vass.2k6 (at) gmail (dot) com>
+# Copyright (C)  2013  Zoltan Vass <zoltan.tombol (at) gmail (dot) com>
 #
 
 #
@@ -85,8 +85,8 @@ pod2usage( -input => 'photo-man.pod', -verbose => 1) if $args{ help };
 pod2usage( -input => 'photo-man.pod', -verbose => 2, -exitval => 0) if $args{ man };
 
 # Check input files.
-pod2usage( -input => 'photo-man.pod', -verbose => 2,
-           -message => "$0: No input files are specified.") if (@ARGV == 0 && -t STDIN);
+pod2usage( -input => 'photo-man.pod', -verbose => 1,
+           -message => "$0: No input files specified.") if (@ARGV == 0 && -t STDIN);
 
 
 ###############################################################################
