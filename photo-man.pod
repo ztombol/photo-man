@@ -2,7 +2,7 @@
 
 =begin :comment
 
-Copyright (C)  2013  Zoltan Vass <zoltan.vass.2k6 (at) gmail (dot) com>
+Copyright (C)  2013  Zoltan Vass <zoltan.tombol (at) gmail (dot) com>
 
 This manual is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -44,7 +44,7 @@ using the file's magic number.
 To access embedded metadata of images, C<photo-man> uses the excellent
 L<Image::ExifTool> module (see http://sno.phy.queensu.ca/~phil/exiftool/).
 
-photo-man and this documentation is licenced under GPLv3 an FDL, repectively.
+photo-man and this documentation is licensed under GPL version 3.
 
 =head1 ARGUMENTS
 
@@ -134,7 +134,7 @@ while preserving the remaining portion of the filename.
 
     photo-man --use-magic --rename -- *
 
-Note, the double hyphens are necessary to avoide C<--rename> using the C<*> as
+Note, the double hyphens are necessary to avoid C<--rename> using the C<*> as
 its template instead of letting it specify every file in the current directory
 as inputs. Also, the template argument to C<--rename> is optional only in this
 case, when C<--use-magic> is used to fix the extensions, without otherwise
@@ -179,14 +179,14 @@ Display the whole documentation and exit.
 
 =head1 COPYRIGHT
 
-photo-man, including test assests such as image files, and this manual is
-licenced under GPL version 3.
+photo-man, including test assets such as image files, and this manual is
+licensed under GPL version 3.
 
 You should have received a copy of the GNU General Public License along with
 photo-man.  If not, see <http://www.gnu.org/licenses/>.
 
 =head1 AUTHORS
 
-Zoltan Vass <zoltan.vass.2k6 (at) gmail (dot) com>
+Zoltan Vass <zoltan.tombol (at) gmail (dot) com>
 
 =cut
