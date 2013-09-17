@@ -156,6 +156,30 @@ sub get_dir {
     return File::Spec->canonpath( (File::Spec->splitpath( $self->get_path ))[1] );
 }
 
+# Returns a DateTime object representing the requested timestamp.
+#
+# @param [in] $0  file object
+# @param [in] $1  name of requested timestamp (for available tags see:
+#                 http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/EXIF.html)
+# @param [in] $2  time zone of the timestamp, defaults to 'floating'
+# @returns DateTime representation of therequest EXIF timestamp
+sub get_timestamp {
+    my $self = shift;
+    my $tag_name = shift;
+    my $time_zone = shift || 'floating';
+
+    # Parse date and create a DateTime object.
+    my $parser = DateTime::Format::Strptime->new(
+        pattern   => '%Y:%m:%d %H:%M:%S',
+        time_zone => $time_zone,
+    );
+    my $timestamp = $parser->parse_datetime(
+        $self->get_img_meta->{ $tag_name }
+    );
+
+    return $timestamp;
+}
+
 # Moves the file and creates the directories leading up to the new location if
 # they do not exist already.
 #

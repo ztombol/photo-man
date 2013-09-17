@@ -67,7 +67,8 @@ has 'forced' => (
 # @param [in] filename_temp  template used to produce the new filename for
 #                            renaming
 #
-# returns  -1, in case of errors
+# returns  -2, timestamp missing
+#          -1, in case of errors
 #           0, successful moving/renaming
 #           1, file at the destination overwritten
 #           2, another file already exists with the same path
@@ -86,41 +87,52 @@ sub move_and_rename {
     my $filename_temp = $args_ref->{filename_temp};
     my $use_libmagic  = $args_ref->{use_libmagic};
 
-    # Assemble new path.
-    my $new_file = $self->_make_path( $image, $location_temp, $filename_temp, $use_libmagic);
+    # New path of the file.
+    my $new_file;
 
-    # Attempt to move the file.
-    if ( ! -e $new_file ) {
-        # Target file does not exists. Move the file!
-        if ( $self->do_commit ) {
-            $image->move_file( $new_file );
-        }
-        $status = 0;
-    }
-    elsif ( $image->get_path eq $new_file ) {
-        # Source and Target are the same. Nothing to do!
-        $status = 3;
+    # Retrieve timestamp for interpolation.
+    my $timestamp = $image->get_timestamp('CreateDate');
+    if ( ! defined $timestamp ) {
+        # EXIF DateTimeDigitized is not present in metadata.
+        $status = -2;
     }
     else {
-        # There exists a file at the Target already.
-        my $cmp = compare( $image->get_path, $new_file );
-        if ( $cmp == 1 ) {
-            # Target is different from Source. Can we overwrite?
-            if ( $self->is_forced ) {
-                # Overwrite file.
-                if ( $self->do_commit ) {
-                    $image->move_file( $new_file );
-                }
-                $status = 1;
+        # Assemble new path.
+        $new_file = $self->_make_path( $image, $location_temp, $filename_temp, $timestamp, $use_libmagic);
+
+        # Attempt to move the file.
+        if ( ! -e $new_file ) {
+            # Target file does not exists. Move the file!
+            if ( $self->do_commit ) {
+                $image->move_file( $new_file );
             }
-            else {
-                # Do not overwrite file.
+            $status = 0;
+        }
+        elsif ( $image->get_path eq $new_file ) {
+            # Source and Target are the same. Nothing to do!
+            $status = 3;
+        }
+        else {
+            # There exists a file at the Target already.
+            my $cmp = compare( $image->get_path, $new_file );
+            if ( $cmp == 1 ) {
+               # Target is different from Source. Can we overwrite?
+               if ( $self->is_forced ) {
+                   # Overwrite file.
+                   if ( $self->do_commit ) {
+                       $image->move_file( $new_file );
+                    }
+                    $status = 1;
+                }
+                else {
+                    # Do not overwrite file.
+                    $status = 2;
+                }
+            }
+            elsif ( $cmp == 0 ) {
+                # Source and Target are the same file. Nothing to do!
                 $status = 2;
             }
-        }
-        elsif ( $cmp == 0 ) {
-            # Source and Target are the same file. Nothing to do!
-            $status = 2;
         }
     }
 
@@ -156,16 +168,17 @@ sub _make_path {
     my $image         = shift;
     my $location_temp = shift;
     my $filename_temp = shift;
+    my $timestamp     = shift;
     my $use_libmagic  = shift;
    
     # Parent directory. 
     my $new_location = ( defined $location_temp && $location_temp ne '' )
-      ? $self->_template_to_str( $image, $location_temp )
+      ? $self->_template_to_str( $location_temp, $timestamp )
       : $image->get_dir;
 
     # Filename including extension.
     my $new_filename = (( defined $filename_temp && $filename_temp ne '' )
-      ? $self->_template_to_str( $image, $filename_temp )
+      ? $self->_template_to_str( $filename_temp, $timestamp )
       : $image->get_filename )
         . '.' . $image->get_extension( $use_libmagic );
 
@@ -181,20 +194,11 @@ sub _make_path {
 # returns produced string
 sub _template_to_str {
     my $self = shift;
-
-    my $image    = shift;
     my $template = shift;
-
-    # Parser the date from metadata.
-    my $img_ctime_parser = DateTime::Format::Strptime->new(
-        pattern   => '%Y:%m:%d %H:%M:%S',
-    );
-    my $img_ctime = $img_ctime_parser->parse_datetime(
-        $image->get_img_meta->{'CreateDate'}
-    );
+    my $timestamp = shift;
 
     # Return interpolated string.
-    return $img_ctime->strftime( $template );
+    return $timestamp->strftime( $template );
 }
 
 # Sets the file system modification timestamp to the EXIF *digitised* timestamp
@@ -204,7 +208,8 @@ sub _template_to_str {
 # @param [in] image     whose timestamp will be modified
 # @param [in] timezone  where the photo was taken
 #
-# returns  -1 in case of errors
+# returns  -2 timestamp missing
+#          -1 error modifying file system timestamp
 #           0 timestamp successfully changed
 #           1 timestamp already correct
 sub fix_timestamp {
@@ -216,12 +221,13 @@ sub fix_timestamp {
     if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
     else                                    { $args_ref = {@_};  }
 
-    my $image    = $args_ref->{image};
-    my $timezone = $args_ref->{timezone};
+    my $image     = $args_ref->{image};
+    my $time_zone = $args_ref->{timezone};
 
     # Cache local timezone (retrival can be expensive).
     my $local_tz = DateTime::TimeZone->new( name => 'local' );
 
+    # TODO: Move this into a separate method on Image::File.
     # File system timestamp.
     my $fs_mtime = DateTime->from_epoch(
         epoch     => $image->get_fs_meta->mtime,
@@ -229,28 +235,26 @@ sub fix_timestamp {
     );
     
     # EXIF creation timestamp.
-    my $img_mtime_parser = DateTime::Format::Strptime->new(
-        pattern   => '%Y:%m:%d %H:%M:%S',
-        time_zone => $timezone,
-    );
-    my $img_mtime = $img_mtime_parser->parse_datetime(
-        $image->get_img_meta->{'CreateDate'}
-    );
-    $img_mtime->set_formatter($img_mtime_parser);
-
-    # Convert embedded timestamp to local time zone.
-    $img_mtime->set_time_zone( $local_tz );
-
-    if (   $img_mtime->truncate(to => 'second')
-        != $fs_mtime->truncate( to => 'second') ) {
-
-        # Needs to be fixed.
-       	if ( $self->do_commit ) { $status = $image->set_mod_time($img_mtime) }
-        else                    { $status = 0; }
+    my $img_mtime = $image->get_timestamp('CreateDate', $time_zone);
+    if ( ! defined $img_mtime ) {
+        # EXIF DateTimeDigitized is not present in metadata.
+        $status = -2;
     }
     else {
-        # Timestamp correct.
-        $status = 1;
+        # Convert embedded timestamp to local time zone.
+        $img_mtime->set_time_zone( $local_tz );
+
+        if (   $img_mtime->truncate(to => 'second')
+            != $fs_mtime->truncate( to => 'second') ) {
+
+            # Needs to be fixed.
+           	if ( $self->do_commit ) { $status = $image->set_mod_time($img_mtime) }
+            else                    { $status = 0; }
+        }
+        else {
+            # Timestamp correct.
+            $status = 1;
+        }
     }
 
     # Already correct.

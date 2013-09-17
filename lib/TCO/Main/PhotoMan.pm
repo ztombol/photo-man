@@ -1,22 +1,6 @@
 #!/usr/bin/env perl
 
 #
-# photo-man is a simple command line utility automating common photo library
-# management tasks, such as:
-#   - moving and renaming based on EXIF DateTimeDigitized timestamp
-#   - setting file system modificaion timestamp to EXIF DateTimeDigitized
-#
-# For a complete list of features see the documentation by issuing
-# `photo-man --man'.
-#
-# photo-man, including test assests such as image files, and its documentation
-# is licenced under GPL version 3.
-#
-# Authors: Zoltan Vass <Zoltan Vass <zoltan.tombol (at) gmail (dot) com>
-#
-
-
-#
 # Copyright (C)  2013  Zoltan Vass <zoltan.tombol (at) gmail (dot) com>
 #
 
@@ -35,6 +19,22 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with photo-man.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+
+#
+# photo-man is a simple command line utility automating common photo library
+# management tasks, such as:
+#   - moving and renaming based on EXIF DateTimeDigitized timestamp
+#   - setting file system modificaion timestamp to EXIF DateTimeDigitized
+#
+# For a complete list of features see the documentation by issuing
+# `photo-man --man'.
+#
+# photo-man, including test assests such as image files, and its documentation
+# is licenced under GPL version 3.
+#
+# Authors: Zoltan Vass <Zoltan Vass <zoltan.tombol (at) gmail (dot) com>
 #
 
 package TCO::Main::PhotoMan;
@@ -250,6 +250,7 @@ sub process_image {
 
     # Print overall result of all operations.
     if ( $is_verbose ) { print "\n"; }
+    # FIXME: this prints done even if one of the operations fail!
     else               { $record->print('done'); }
 }
 
@@ -291,6 +292,7 @@ sub op_move_and_rename {
     $class->out_move_and_rename( $status, $new_path );
 }
 
+# Produces output for move and rename operations.
 sub out_move_and_rename {
     my ($class, $status, $new_path) = @_;
 
@@ -303,6 +305,7 @@ sub out_move_and_rename {
         : $status == 3 ? sub { $record->print("already at");
                                $record->reset(); }->()
         : $status ==-1 ? croak "MOVE: error while moving file"
+        : $status ==-2 ? $record->print('error!', 'missing timestamp')
         :                croak "MOVE: unhandled return value $status";
     }
     else {
@@ -311,8 +314,12 @@ sub out_move_and_rename {
         : $status == 2 ? $record->print('same')
         : $status == 3 ? $record->print('there')
         : $status ==-1 ? croak "MOVE: error while moving file"
+        : $status ==-2 ? $record->print('error!', 'missing timestamp')
         :                croak "MOVE: unhandled return value $status";
-        $record->print( $new_path );
+
+	if ( $status >= 0 ) {
+            $record->print( $new_path );
+    	}
     }
 }
 
@@ -350,8 +357,16 @@ sub op_fix_timestamp {
     $class->out_fix_timestamp( $status, $new_time );
 }
 
+# Produces output for timestamp change operations.
 sub out_fix_timestamp {
     my ($class, $status, $new_time) = @_;
+
+    if ( defined $new_time ) {
+        my $parser = DateTime::Format::Strptime->new(
+            pattern   => '%Y:%m:%d %H:%M:%S',
+        );
+        $new_time->set_formatter($parser);
+    }
 
     if ( $is_verbose ) {
         $record->print( 'time' );
@@ -360,12 +375,14 @@ sub out_fix_timestamp {
         : $status == 1 ? sub { $record->print("correct");
                                $record->reset(); }->()
         : $status ==-1 ? croak "TOUCH: error while modifying timestamp"
+        : $status ==-2 ? $record->print('error!', 'missing timestamp')
         :                croak "TOUCH: unhandled return value $status";
     }
     else {
           $status == 0 ? $record->print( $new_time )
         : $status == 1 ? $record->print('--')
         : $status ==-1 ? croak 'TOUCH: error while modifying timestamp'
+        : $status ==-2 ? $record->print('!!! missing !!!')
         :                croak 'TOUCH: unhandled return value $status';
     }
 }
