@@ -70,6 +70,8 @@ sub setup : Tests(setup) {
             path => File::Spec->catfile( $src_path, 'test.jpg' ) ),
         TCO::Image::File->new(
             path => File::Spec->catfile( $src_path, 'test2.jpg') ),
+        TCO::Image::File->new(
+            path => File::Spec->catfile( $src_path, 'no_meta.jpg') ),
     ]);
 }
 
@@ -112,8 +114,10 @@ sub create_sandbox {
 
     # Copy source files.
     my %src_dst = (
-        'test.jpg'  => [ $src, $src_copy ],
-        'test2.jpg' => [ $src, $src_copy ],
+        # source         # destinations
+        'test.jpg'    => [ $src, $src_copy ],
+        'test2.jpg'   => [ $src, $src_copy ],
+        'no_meta.jpg' => [ $src ],
     );
     while ( my ($file, $list) = each(%src_dst) ) {
         foreach my $dest ( @{$list} ) {
@@ -133,6 +137,30 @@ sub constructor : Tests {
         "Creating a $class with default attributes should succeed";
     isa_ok $self->default_manager, $class;
 }
+
+sub no_metadata : Tests {
+    my $self = shift;
+    my $file = $self->default_files->[2];
+    my $man = $self->default_manager;
+
+    # Set new timestamp.
+    # TODO: remove the index after journaling is finished.
+    is( ($man->fix_timestamp(
+            timezone => 'Asia/Tokyo',
+            image    => $file,
+        ))[0], -2,
+        'when DateTimeDigitized is missing, fixing file system modification timestamp should fail');
+    
+    # Move and rename.
+    is( ($man->move_and_rename(
+            image         => $file,
+            location_temp => File::Spec->catfile( $self->temp_dir, 'dest/%Y.%m' ),
+            filename_temp => 'img-%Y%m%d-%H%M%S',
+            use_libmagic  => 1,
+        ))[0], -2,
+        'when DateTimeDigitised is missing, moving and renaming should fail');
+}
+
 
 # Test the timestamp setting subroutine. The file system timestamp should be
 # changed only when the manager is in commit mode (forced mode does not affect
@@ -160,9 +188,8 @@ sub fix_timestamp : Tests {
         'file system modification timestamp should be up-to-date');
 }
 
-# Test the moving and renaming subroutine when changes are not made to the
-# files. The matrix below shows what the desired outcomes are in different
-# manager configurations.
+# Test the moving and renaming subroutine. The matrix below shows what the
+# desired outcomes are in different manager configurations.
 #
 #
 #        commit   no  yes   no  yes
@@ -386,10 +413,12 @@ sub move_only {
     my $file = $self->default_files->[0];
 
     my $src_path = $file->get_path;
-    my $dst_path = File::Spec->catfile(
-        $self->temp_dir, 'temp/2013.03', $file->get_basename,
-    );
-    my $op = $man->move_and_rename(
+    # TODO: workaround until journaling is implemented in File::Image.
+    #my $dst_path = File::Spec->catfile(
+    #    $self->temp_dir, 'temp/2013.03', $file->get_basename,
+    #);
+    #my $op = $man->move_and_rename(
+    my ($op, $dst_path) = $man->move_and_rename(
         image         => $file,
         location_temp => File::Spec->catfile( $self->temp_dir, 'temp/%Y.%m', ),
     );
@@ -403,10 +432,12 @@ sub rename_only {
     my $file = $self->default_files->[0];
 
     my $src_path = $file->get_path;
-    my $dst_path = File::Spec->catfile(
-        $file->get_dir, 'img-20130319-160753.jpeg',
-    );
-    my $op = $man->move_and_rename(
+    # TODO: workaround until journaling is implemented in File::Image.
+    #my $dst_path = File::Spec->catfile(
+    #    $file->get_dir, 'img-20130319-160753.jpeg',
+    #);
+    #my $op = $man->move_and_rename(
+    my ($op, $dst_path) = $man->move_and_rename(
         image         => $file,
         filename_temp => 'img-%Y%m%d-%H%M%S',
         use_libmagic  => 1,
@@ -421,10 +452,12 @@ sub move_and_rename {
     my $file = $self->default_files->[0];
 
     my $src_path = $file->get_path;
-    my $dst_path = File::Spec->catfile(
-        $self->temp_dir, 'dest/2013.03', 'img-20130319-160753.jpeg',
-    );
-    my $op = $man->move_and_rename(
+    # TODO: workaround until journaling is implemented in File::Image.
+    #my $dst_path = File::Spec->catfile(
+    #    $self->temp_dir, 'dest/2013.03', 'img-20130319-160753.jpeg',
+    #);
+    #my $op = $man->move_and_rename(
+    my ($op, $dst_path) = $man->move_and_rename(
         image         => $file,
         location_temp => File::Spec->catfile( $self->temp_dir, 'dest/%Y.%m' ),
         filename_temp => 'img-%Y%m%d-%H%M%S',

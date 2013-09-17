@@ -24,7 +24,7 @@ package TestsFor::TCO::Main::PhotoMan;
 
 use Test::Class::Most
     parent      =>'TestsFor',
-    attributes  => [qw( default_manager default_files temp_dir )];
+    attributes  => [qw( default_files temp_dir )];
 use Test::Trap;
 
 use TCO::Image::File;
@@ -57,14 +57,6 @@ sub setup : Tests(setup) {
     # Create sandbox. Temporary directory with a test file.
     $self->create_sandbox();
     
-    # Instantiate default manager object.
-# TODO: also remove the attribute
-#    $self->default_manager(
-#        $class->new(
-#            commit => 1,
-#        )
-#    );
-
     # Instantiate default file object.
     my $src_path = File::Spec->catfile( $self->temp_dir, 'src' );
     $self->default_files([
@@ -93,13 +85,15 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
-# Creates a temporary directory with a test file in it. The temporary directory
-# will be automatically deleted when the test finishes.
+# Creates a temporary directory with test files in it. The temporary directory
+# will be automatically deleted when the test finishes, unless you want it to
+# be preserved for debugging purposes (see below).
 sub create_sandbox {
     my $self = shift;
 
+    # TODO: there has to be an easier way of locating test resources.
     # Parent of temporary directory and location of test resources,
-    # respecively.
+    # respectively.
     my $tmp = '/tmp';
     my $res = File::Spec->catfile(
         (File::Spec->splitpath(__FILE__))[1],
@@ -110,6 +104,8 @@ sub create_sandbox {
     # Create directory structure.
     $self->temp_dir( File::Temp->newdir(
         template => "$tmp/pm-tests-XXXXXXXX",
+        # Uncomment this line to preserve the temporary directory after the
+        # tests finish. Useful for debugging.
         #CLEANUP => 0,
     ));
     my $src      = File::Spec->catdir( $self->temp_dir, 'src' );
@@ -118,6 +114,7 @@ sub create_sandbox {
 
     # Copy source files.
     my %src_dst = (
+        # Source       # Destinations
         'test.jpg'  => [ $src, $src_copy ],
         'test2.jpg' => [ $src, $src_copy ],
     );
@@ -134,7 +131,7 @@ sub parse_options : Tests {
     my $self = shift;
     my %res_hash;
 
-    # All valid options, except `--verbose', `--help' and `--man'.
+    # Options that modify %args, i.e. all except `--verbose', `--help' and `--man'.
     my %want = (
         touch       => 'Asia/Tokyo',
         move        => '%Y/%m.%d',
@@ -201,8 +198,11 @@ sub init_test_output {
     my $self = shift;
     $TCO::Main::PhotoMan::is_verbose = shift;
 
-    my $fmtr = TCO::Output::Columnar::Format->new( format  => "@<\n" );
+    # Suppress 'Name "xyz" used only once: possible typo' warning.
+    $TCO::Main::PhotoMan::header = $TCO::Main::PhotoMan::record;
 
+    # Simple (shared) test formatter.
+    my $fmtr = TCO::Output::Columnar::Format->new( format  => "@<\n" );
     $TCO::Main::PhotoMan::header = $fmtr;
     $TCO::Main::PhotoMan::record = $fmtr;
 }
@@ -210,6 +210,7 @@ sub init_test_output {
 sub out_move_and_rename : Tests {
     my $self = shift;
     my $class = $self->class_to_test;
+    my @tests;
 
     #
     # Compact (NON-verbose) output
@@ -218,8 +219,8 @@ sub out_move_and_rename : Tests {
     # Initialise output formatters.
     $self->init_test_output( 0 );
 
-    # Parameters and expected behaviour.
-    my @tests = (
+    # Parameters and expected (non-fatal) behaviour.
+    @tests = (
         {
             in  => [ 0, 'new/path/img.jpeg' ],
             out => [ "move\nnew/path/img.jpeg\n",
@@ -236,42 +237,17 @@ sub out_move_and_rename : Tests {
             in  => [ 3, 'new/path/img.jpeg' ],
             out => [ "there\nnew/path/img.jpeg\n",
                      "(compact) output should be correct when file is aready at destination" ],
+        }, {
+            in  => [-2, undef ],
+            out => [ "error!\nmissing timestamp\n",
+                     "(compact) output should be correct when DateTimeDigitized is missing from metadata" ],
         }
     );
-
     foreach my $test ( @tests) {
         trap { $class->out_move_and_rename( @{$test->{ in }} ) };
         $trap->stdout_is( @{$test->{ out }} );
     }
     
-#    # Moving file.
-#    trap { $class->out_move_and_rename( 0, 'new/path/file.jpeg' ) };
-#    $trap->stdout_is(
-#        "move\nnew/path/file.jpeg\n",
-#        "output is okay",
-#    );
-#
-#    # Overwriting file.
-#    trap { $class->out_move_and_rename( 1, 'new/path/file.jpeg' ) };
-#    $trap->stdout_is(
-#        "over\nnew/path/file.jpeg\n",
-#        "output is okay",
-#    );
-#
-#    # A copy already there.
-#    trap { $class->out_move_and_rename( 2, 'new/path/file.jpeg' ) };
-#    $trap->stdout_is(
-#        "same\nnew/path/file.jpeg\n",
-#        "output is okay",
-#    );
-#
-#    # File already at destination.
-#    trap { $class->out_move_and_rename( 3, 'new/path/file.jpeg' ) };
-#    $trap->stdout_is(
-#        "there\nnew/path/file.jpeg\n",
-#        "output is okay",
-#    );
-
     # Error moving file.
     trap { $class->out_move_and_rename( -1, undef ) };
     $trap->did_die( "(compact) upon error the subroutine should die" );
@@ -285,8 +261,8 @@ sub out_move_and_rename : Tests {
     # Initialise output formatters.
     $self->init_test_output( 1 );
 
-    # Parameters and expected behaviour.
-    my @tests = (
+    # Parameters and expected (non-fatal) behaviour.
+    @tests = (
         {
             in  => [ 0, 'new/path/img.jpeg' ],
             out => [ "move\nmoved\nnew/path/img.jpeg\n",
@@ -303,9 +279,12 @@ sub out_move_and_rename : Tests {
             in  => [ 3, 'new/path/img.jpeg' ],
             out => [ "move\nalready at\n\n",
                      "(verbose) output should be correct when file is aready at destination" ],
+        }, {
+            in  => [-2 ],
+            out => [ "move\nerror!\nmissing timestamp\n",
+                     "(verbose) output should be correct when DateTimeDigitized is missing from metadata" ],
         }
     );
-
     foreach my $test ( @tests) {
         trap { $class->out_move_and_rename( @{$test->{ in }} ) };
         $trap->stdout_is( @{$test->{ out }} );
@@ -320,6 +299,11 @@ sub out_move_and_rename : Tests {
 sub out_fix_timestamp : Tests {
     my $self = shift;
     my $class = $self->class_to_test;
+    my @tests;
+    my $new_time = DateTime->new(
+        year   => 2013, month  => 9,  day    => 14,
+        hour   => 15,   minute => 53, second => 21,
+    );
 
     #
     # Compact (NON-verbose) output
@@ -328,19 +312,22 @@ sub out_fix_timestamp : Tests {
     # Initialise output formatters.
     $self->init_test_output( 0 );
 
-    # Parameters and expected behaviour.
-    my @tests = (
+    # Parameters and expected (non-fatal) behaviour.
+    @tests = (
         {
-            in  => [ 0, '2013:09:14 15:53:21' ],
+            in  => [ 0, $new_time ],
             out => [ "2013:09:14 15:53:21\n",
                      "(compact) output should be correct when timestamp is updated successfully" ],
         }, {
             in  => [ 1 ],
             out => [ "--\n",
                      "(compact) output should be correct when timestamp is correct" ],
+        }, {
+            in  => [-2 ],
+            out => [ "!!! missing !!!\n",
+                     "(compact) output should be correct when DateTimeDigitized is missing from metadata" ],
         }
     );
-
     foreach my $test ( @tests) {
         trap { $class->out_fix_timestamp( @{$test->{ in }} ) };
         $trap->stdout_is( @{$test->{ out }} );
@@ -359,19 +346,22 @@ sub out_fix_timestamp : Tests {
     # Initialise output formatters.
     $self->init_test_output( 1 );
 
-    # Parameters and expected behaviour.
-    my @tests = (
+    # Parameters and expected (non-fatal) behaviour.
+    @tests = (
         {
-            in  => [ 0, '2013:09:14 15:53:21' ],
+            in  => [ 0, $new_time ],
             out => [ "time\nchanged\n2013:09:14 15:53:21\n",
                      "(verbose) output should be correct when timestamp is updated successfully" ],
         }, {
             in  => [ 1 ],
             out => [ "time\ncorrect\n\n",
                      "(verbose) output should be correct when timestamp is correct" ],
+        }, {
+            in  => [-2 ],
+            out => [ "time\nerror!\nmissing timestamp\n",
+                     "(compact) output should be correct when DateTimeDigitized is missing from metadata" ],
         }
     );
-
     foreach my $test ( @tests) {
         trap { $class->out_fix_timestamp( @{$test->{ in }} ) };
         $trap->stdout_is( @{$test->{ out }} );

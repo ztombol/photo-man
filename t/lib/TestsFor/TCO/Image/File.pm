@@ -79,20 +79,24 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
-# Creates a temporary directory with a test file in it. The temporary directory
-# will be automatically deleted when the test finishes.
+# Creates a temporary directory with test files in it. The temporary directory
+# will be automatically deleted when the test finishes, unless you want it to
+# be preserved for debugging purposes (see below).
 sub create_sandbox {
     my $self = shift;
 
+    # TODO: there has to be an easier way of locating test resources.
     # Parent of temporary directory and location of test resources,
-    # respecively.
+    # respectively.
     my $tmp = '/tmp';
     my $res = (File::Spec->splitpath(__FILE__))[1];
 
     # Create directory structure.
     $self->temp_dir( File::Temp->newdir(
         template => "$tmp/pm-tests-XXXXXXXX",
-	#CLEANUP => 0
+        # Uncomment this line to preserve the temporary directory after the
+        # tests finish. Useful for debugging.
+        #CLEANUP => 0
     ));
     my $src = File::Spec->catdir( $self->temp_dir, 'src' );
     make_path( $src );
@@ -118,11 +122,12 @@ sub attributes : Tests {
     my $self = shift;
     my $file = $self->default_file;
 
+    #
+    # Attributes with non-parametrised accessors.
+    #
     my %default_attributes = (
         basename  => [ 'test.jpg' ],
         filename  => [ 'test'     ],
-        extension => [ 'jpg' , 0  ],
-        extension => [ 'jpeg', 1  ],
         dir       => [ File::Spec->catfile( $self->temp_dir, 'src/' ) ],
     );
     
@@ -133,6 +138,30 @@ sub attributes : Tests {
         is $file->$method(@{$res_and_params}), $result,
             "The value for '$attribute' should be correct;"
     }
+
+    #
+    # Attributes with parametrised accessors.
+    #
+
+    # extension
+    can_ok $file, 'get_extension';
+    is $file->get_extension( 0 ), 'jpg',
+        "'extension' should be correctly determined using the filename";
+    is $file->get_extension( 1 ), 'jpeg',
+        "'extension' should be correctly determined using the magic number";
+    is $file->get_extension(), 'jpg',
+        "'extension' by default should be extract from the filename";
+
+    # extension
+    can_ok $file, 'get_timestamp';
+    is $file->get_timestamp( 'CreateDate' )
+        ->set_time_zone('Europe/Budapest'),
+        '2013-03-19T16:07:53',
+        "'timestamp' should not have a time zone set by default";
+    is $file->get_timestamp( 'CreateDate', 'Asia/Tokyo' )
+        ->set_time_zone('Europe/Budapest'),
+        '2013-03-19T08:07:53',
+        "'timestamp' should have its time zone correctly set when one is specfied";
 }
 
 sub move_file : Tests {
@@ -157,7 +186,7 @@ sub set_mod_time : Tests {
     my $self = shift;
     my $file = $self->default_file;
 
-    # New timestamp.
+    # New time stamp.
     my $new_mtime = DateTime->new(
         year      => 2013,
         month     => 8,
@@ -171,12 +200,12 @@ sub set_mod_time : Tests {
         ),
     );
 
-    # Timestamp in original and local time zones.
+    # Time stamp in original and local time zones.
     (my $dt_orig = $new_mtime) =~ s/(\d\d)\Z/:$1/;
     $new_mtime->set_time_zone( 'local' );
     (my $dt_local = $new_mtime) =~ s/(\d\d)\Z/:$1/;
 
-    # Set new timestamp.
+    # Set new time stamp.
     is $file->set_mod_time( $dt_orig ), 0,
         'changing file system timestamp should complete without errors';
 
