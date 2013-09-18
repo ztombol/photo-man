@@ -429,7 +429,7 @@ sub init_output {
         # Verbose (vertical) output. Print messages on their own separate line.
         $out_header = TCO::Output::Columnar::Format->new( format  => "@<\n" );
         $out_record = TCO::Output::Columnar::Format->new(
-            format  => "[@|||||] @>>>>>>>>>>>> > @<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n",
+            format  => "[@|||||] @>>>>>>>>>>>> > @...<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n",
             control => "        ^             ^                                        ",
         );
     }
@@ -448,13 +448,13 @@ sub init_output {
                     ? " " : "]" ),
         );
         $out_record = TCO::Output::Columnar::Format->new(
-            format  => "[      ] @<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+            format  => "[      ] @...<<<<<<<<<<<<<<<<<<<<<<<<",
         );
      
         # Move and rename.
         if ( defined $args{ move } || defined $args{ rename } ) {
             $out_header->append( format => " > action > new path                   ]" );
-            $out_record->append( format => " >@|||||||> @<<<<<<<<<<<<<<<<<<<<<<<<<<<" );
+            $out_record->append( format => " >@|||||||> @...<<<<<<<<<<<<<<<<<<<<<<<<" );
         }
 
         # Timestamp fix.
