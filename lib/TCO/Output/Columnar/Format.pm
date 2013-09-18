@@ -189,34 +189,74 @@ sub _parse_format {
 
     # Regex to match the different fields.
     my $fmt_regex = qr{
-        @(                    # data field alignment to one of:
-            (?<left>\<+)   |  #   - left
-            (?<centre>\|+) |  #   - centre
-            (?<right>\>+)     #   - right
-        ) |                   # or a
-        (?<literal>[^@]*)     # literal field
+        (?<f_d>@                # data field
+            (?<t_b>\.\.\.)?     #    truncate at the beginning
+            (                   #    alignment:
+                (?<a_l><+)  |   #        left, or
+                (?<a_c>\|+) |   #        centre, or
+                (?<a_r>>+)      #        right
+            )                   #
+            (?<t_e>\.\.\.)?     #    truncate at the end
+        ) |                     # or
+        (?<f_l>[^@]+)           # literal field
     }x;
     
-    # Parse each field group separatelys.
+    # Parse each field group separately.
     while ( $fmt_str =~ /$fmt_regex/g ) {
-        if ( $+{literal} ) {
+        # Instantiate new field.
+        my $new_field;
+
+        if ( defined $+{ f_l } ) {
             # Literal field matched.
-            push @fields, TCO::Output::Columnar::Field::Literal->new(
-                string => $+{literal}
+            $new_field = TCO::Output::Columnar::Field::Literal->new(
+                string => $+{ f_l },
             );
         }
         else {
             # Data field matched.
-            foreach ( qw(left centre right) ) {
-                next unless $+{$_};
-                push @fields, TCO::Output::Columnar::Field::Data->new(
-                    alignment => $_,
-                    # +1 to account for the unmatched @, see $fmt_regex above.
-                    width => length( $+{$_} ) + 1,
+            my %align = (
+                a_l => 'left',
+                a_c => 'centre',
+                a_r => 'right',
+            );
+            my %trunc = (
+                t_b => 'beginning',
+                t_e => 'end',
+            );
+
+            # Alignment.
+            foreach my $al (qw{ a_l a_c a_r }) {
+                next if not defined $+{ $al };
+
+                my $length = length $+{ f_d };
+
+                # Truncator.
+                my $truncator;
+                foreach my $tr (qw{ t_b t_e }) {
+                    next if not defined $+{ $tr };
+
+                    $truncator = TCO::String::Truncator->new(
+                        method => $trunc{ $tr },
+                        length => $length,
+                    );
+                    last;
+                }
+
+                # Instantiate data field.
+                $new_field = TCO::Output::Columnar::Field::Data->new(
+                    alignment => $align{ $al },
+                    width     => $length,
                 );
+
+                # Set truncator if any.
+                $new_field->set_truncator( $truncator ) if defined $truncator;
+
                 last;
             }
         }
+
+        # Add new field to array.
+        push @fields, $new_field;
     }
     
     # Return array of fields.

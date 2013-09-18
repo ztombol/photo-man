@@ -57,9 +57,8 @@ has 'alignment' => (
 
 # Truncator object used when the data is wider than the field.
 has 'truncator' => (
-    is      => 'ro',
+    is      => 'rw',
     isa     => 'TCO::String::Truncator',
-    reader  => '_get_truncator',
     lazy    => 1,
     builder => '_build_truncator',
 );
@@ -100,7 +99,7 @@ sub as_string {
     my $data = shift;
 
     # Truncate data if necessary.
-    $data = $self->_get_truncator->truncate($data);
+    $data = $self->get_truncator->truncate($data);
 
     if ( $self->_get_alignment eq 'centre' ) {
         # Centre alignment. Pad text with spaces on both sides.

@@ -82,6 +82,79 @@ sub constructor : Tests {
     isa_ok $self->default_formatter, $class;
 }
 
+sub _parse_format : Tests {
+    my $self = shift;
+    my $class = $self->class_to_test;
+    my (@want, @have);
+
+    # Literal field.
+    @have = $class->_parse_format( "literal" );
+    @want = (
+        TCO::Output::Columnar::Field::Literal->new(
+            string => "literal",
+        ),
+    );
+    eq_or_diff \@have, \@want, "literal";
+
+    # Left aligned.
+    @have = $class->_parse_format( "@<<<<" );
+    @want = (
+        TCO::Output::Columnar::Field::Data->new(
+            width     => 5,
+            alignment => 'left',
+        ),
+    );
+    eq_or_diff \@have, \@want, "data: left aligned";
+
+    # Centred.
+    @have = $class->_parse_format( "@||||" );
+    @want = (
+        TCO::Output::Columnar::Field::Data->new(
+            width     => 5,
+            alignment => 'centre',
+        ),
+    );
+    eq_or_diff \@have, \@want, "data: centred";
+
+    # Right aligned.
+    @have = $class->_parse_format( "@>>>>" );
+    @want = (
+        TCO::Output::Columnar::Field::Data->new(
+            width     => 5,
+            alignment => 'right',
+        ),
+    );
+    eq_or_diff \@have, \@want, "data: right aligned";
+
+    # Truncated at the beginning.
+    @have = $class->_parse_format( "@...<" );
+    @want = (
+        TCO::Output::Columnar::Field::Data->new(
+            width     => 5,
+            alignment => 'left',
+            truncator => TCO::String::Truncator->new(
+                method => 'beginning',
+                length => 5,
+            ),
+        ),
+    );
+    eq_or_diff \@have, \@want, "data: truncated at the beginning";
+
+    # Truncated at the end.
+    @have = $class->_parse_format( "@<..." );
+    @want = (
+        TCO::Output::Columnar::Field::Data->new(
+            width     => 5,
+            alignment => 'left',
+            truncator => TCO::String::Truncator->new(
+                method => 'end',
+                length => 5,
+            ),
+        ),
+    );
+    eq_or_diff \@have, \@want, "data: truncated at the end";
+}
+
 sub print : Tests {
     my $self = shift;
     my $class = $self->class_to_test;
