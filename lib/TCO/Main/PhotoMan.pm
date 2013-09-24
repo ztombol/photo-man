@@ -441,7 +441,6 @@ sub init_output {
         $out_record = TCO::Output::Columnar::Format->new(
             format  => "[@|||||] @>>>>>>>>>>>> > %...<\n",
             control => "        ^             ^         ",
-            width   => 80,
         );
     }
     else {
@@ -453,11 +452,9 @@ sub init_output {
             # We append the trailing characters depending on the configuration
             # (if move/rename is specified or not).
             format => "[result] [ %<",
-            width  => 80,
         );
         $out_record = TCO::Output::Columnar::Format->new(
             format => "[      ] %...<",
-            width  => 80,
         );
      
         # Move and rename.

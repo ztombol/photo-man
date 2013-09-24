@@ -30,6 +30,8 @@ use MooseX::FollowPBP;
 use namespace::autoclean;
 use Carp 'croak';
 
+use Term::Size::Any qw( chars );
+
 use TCO::Output::Columnar::Field::Data;
 use TCO::Output::Columnar::Field::Data::ElasticData;
 use TCO::Output::Columnar::Field::Literal;
@@ -69,12 +71,20 @@ has 'position' => (
 has 'width' => (
     is      => 'rw',
     isa     => 'Int', # TODO: non negative integer
-    default => 100, # TODO: set this to console width
+    builder => '_width_builder',
     trigger => sub {
         my ( $self, $width, $old_width ) = @_;
         $self->_stretch() if $self->_has_elastic;
     }
 );
+
+# Builder method setting the default format width to the width of the terminal.
+sub _width_builder {
+    local $_;
+    my $self = shift;
+
+    return (chars)[0];
+}
 
 around BUILDARGS => sub {
     my $orig = shift;
