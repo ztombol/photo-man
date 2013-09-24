@@ -20,9 +20,9 @@
 #
 
 
-# Field printing an arbitrary string aligned on an arbitrary number of
-# characters. Alignment and width are immutable and given at construction time.
-# The payload data is specified upon prining.
+# Field, printing an arbitrary string aligned on an arbitrarily wide space.
+# Alignment and maximum width is given at construction time and payload data
+# (string to format) is specified upon printing.
 package TCO::Output::Columnar::Field::Data;
 
 use Moose;
@@ -41,10 +41,9 @@ use TCO::String::Truncator;
 
 # Number of characters the field can occupy.
 has 'width' => (
-    is       => 'ro',
+    is       => 'rw',
     isa      => 'TCO::Output::Columnar::Types::FieldWidth',
     required => 1,
-    reader   => '_get_width',
 );
 
 # Alignment of the printed data. Can be `left', `right' or `centre'.
@@ -55,7 +54,7 @@ has 'alignment' => (
     reader   => '_get_alignment',
 );
 
-# Truncator object used when the data is wider than the field.
+# Truncator object used to shorten data wider than the field.
 has 'truncator' => (
     is      => 'rw',
     isa     => 'TCO::String::Truncator',
@@ -72,46 +71,44 @@ around BUILDARGS => sub {
     if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
     else                                    { $args_ref = {@_};  }
 
-    $args_ref->{type} = 'data';
+    # Let subclasses specify their own type.
+    $args_ref->{type} //= 'data';
+
     return $class->$orig( $args_ref );
 };
 
-# Builder method to initialise default truncator. Method depends on the
-# alignment of the field.
+# Builder method. Initialises truncator when one is not supplied to the
+# constructor. Truncation method depends on the alignment.
 sub _build_truncator {
     local $_;
     my $self = shift;
-    my $align  = $self->_get_alignment;
-    # TODO: middle truncation
-    my $method = ( $align eq 'left'   ) ? 'end'
-               : ( $align eq 'centre' ) ? 'end'
-               :                          'beginning';
-    
+
+    my $method = $self->_get_alignment eq 'right' ? 'beginning'
+                                                  : 'end';
     return TCO::String::Truncator->new(
         method => $method,
-        length => $self->_get_width,
+        length => $self->get_width,
     );
 }
 
-# Produces string representation of field.
+# Renders the string representation of the field.
 sub as_string {
     my $self = shift;
     my $data = shift;
 
     # Truncate data if necessary.
-    $data = $self->get_truncator->truncate($data);
+    $data = $self->get_truncator->truncate( $data );
 
     if ( $self->_get_alignment eq 'centre' ) {
-        # Centre alignment. Pad text with spaces on both sides.
-        my $data_width = length $data;
-        my $left_pad = int( ($self->_get_width - $data_width) / 2 );
-        my $right_pad = $self->_get_width - ($data_width + $left_pad);
-        return sprintf( "%${left_pad}s%s%${right_pad}s", '', $data, '' );
+        # Centre alignment.
+	my $left_pad  = int( ($self->get_width - length $data) / 2 );
+	my $right_pad = $self->get_width - ( length($data) + $left_pad );
+        return ' ' x $left_pad . $data . ' ' x $right_pad;
     }
     else {
         # Left/Right alignment.
         my $alignment = ($self->_get_alignment eq 'left') ? '-' : '';
-        return sprintf( "%${alignment}" . $self->_get_width . "s", $data );
+        return sprintf( "%${alignment}" . $self->get_width . "s", $data );
     }
 }
 

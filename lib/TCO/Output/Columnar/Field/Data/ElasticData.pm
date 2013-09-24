@@ -20,27 +20,30 @@
 #
 
 
-# Field printing a constant string literal. The string literal is given at
-# object creation.
-package TCO::Output::Columnar::Field::Literal;
+# A 'rubbery' data field whose width is given with a ratio specifying what
+# fraction of the remaining space, after reserving space for static sized
+# fields, the field can take up comparing to other elastic fields.
+package TCO::Output::Columnar::Field::Data::ElasticData;
 
 use Moose;
-use MooseX::StrictConstructor;
-use MooseX::FollowPBP;
 use namespace::autoclean;
-use Carp;
+use MooseX::FollowPBP;
+use MooseX::StrictConstructor;
+use Carp 'croak';
 
-extends 'TCO::Output::Columnar::Field';
+extends 'TCO::Output::Columnar::Field::Data';
 
 our $VERSION = '0.1';
 $VERSION = eval $VERSION;
 
-# String to output.
-has 'string' => (
+use TCO::Output::Columnar::Types;
+#use TCO::String::Truncator;
+
+# Number of characters the field can occupy.
+has 'ratio' => (
     is       => 'ro',
-    isa      => 'Str',
+    isa      => 'TCO::Output::Columnar::Types::ElasticityRatio',
     required => 1,
-    reader   => '_get_string',
 );
 
 around BUILDARGS => sub {
@@ -52,30 +55,17 @@ around BUILDARGS => sub {
     if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
     else                                    { $args_ref = {@_};  }
 
-    $args_ref->{type} = 'literal';
+    $args_ref->{type} = 'elastic';
     return $class->$orig( $args_ref );
 };
 
-sub get_width {
+# Sets a new width for the field and its truncator.
+sub resize {
     my $self = shift;
-    return length $self->_get_string;
-}
+    my $width = shift;
 
-# Returns true if the field contains a '\r' carriage return character.
-#
-# @returns 1, if field contains a carrage return character
-#          0, otherwise
-sub has_return {
-    my $self = shift;
-    
-    return 1 if $self->_get_string =~ /\r/;
-    return 0;
-} 
-
-# Produces string representation of field.
-sub as_string {
-    my $self = shift;
-    return sprintf $self->_get_string;
+    $self->set_width( $width );
+    $self->get_truncator->set_length( $width );
 }
 
 __PACKAGE__->meta->make_immutable;

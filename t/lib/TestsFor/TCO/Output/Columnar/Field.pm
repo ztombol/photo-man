@@ -94,4 +94,14 @@ sub constructor : Tests {
     isa_ok $self->default_field, $class;
 }
 
+sub attributes : Tests {
+    my $self = shift;
+    my $field = $self->default_field;
+
+    # Getters.
+    can_ok $field, "get_type";
+    eq_or_diff $field->get_type(), 'test',
+        "The value for 'get_type' should be correct";
+}
+
 1;

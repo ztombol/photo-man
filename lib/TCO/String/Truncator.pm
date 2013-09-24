@@ -40,11 +40,10 @@ has 'method' => (
 
 # Maximum length of the truncated string.
 has 'length' => (
-    is       => 'ro',
+    is       => 'rw',
 #    isa      => 'TCO::String::Types::NonNegativeInteger',
     isa      => 'Int',
     required => 1,
-    reader   => '_get_length',
 );
 
 # String where cutting is allowed. If set to the empty string '' truncation can
@@ -69,14 +68,14 @@ sub truncate {
     my $self = shift;
     my $string = shift;
 
-    if ( $self->_get_length >= length $string ) {
+    if ( $self->get_length >= length $string ) {
         # String is short enough, no need to truncate.
         return $string;
     }
 
     my $ellip = $self->_get_ellipsis;
     my $delim = $self->_get_delimiter;
-    my $max_length = $self->_get_length - length $ellip;
+    my $max_length = $self->get_length - length $ellip;
 
     if ( $self->_get_method eq 'end' ) {
         # Cut the excess at the end.

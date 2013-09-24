@@ -20,8 +20,9 @@
 #
 
 
-# Base class for all fields. This is an abstract class and does nothing in
-# itself. Use on of its subclasses.
+# Base class for all fields. This is an abstract base class to all other field
+# types. It's sole purpose is to store a 'type' field. Use on of its
+# subclasses.
 package TCO::Output::Columnar::Field;
 
 use Moose;
@@ -33,6 +34,7 @@ use Carp;
 our $VERSION = '0.1';
 $VERSION = eval $VERSION;
 
+# Type of the field as supplied by the subclasses.
 has 'type' => (
     is       => 'ro',
     isa      => 'Str',

@@ -19,7 +19,6 @@
 # along with photo-man.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-
 package TCO::Output::Columnar::Types;
 
 use Moose::Util::TypeConstraints;
@@ -33,5 +32,10 @@ subtype 'TCO::Output::Columnar::Types::FieldAlignment'
     => as      'Str'
     => where   { $_ eq 'left' || $_ eq 'centre' || $_ eq 'right' }
     => message { "Field alignment must be one of `left', `centre' or `right', you specified $_" };
+
+subtype 'TCO::Output::Columnar::Types::ElasticityRatio'
+    => as      'Int'
+    => where   { $_ > 0 }
+    => message { "Elasticity ratio must be a positive integer, you specified $_" };
 
 1;

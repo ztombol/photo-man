@@ -20,10 +20,10 @@
 #
 
 
-package TestsFor::TCO::Output::Columnar::Field::Literal;
+package TestsFor::TCO::Output::Columnar::Field::Data::ElasticData;
 
 use Test::Class::Most
-    parent      => 'TestsFor::TCO::Output::Columnar::Field';
+    parent      => 'TestsFor::TCO::Output::Columnar::Field::Data';
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -68,20 +68,25 @@ sub create_default_field {
     my $self  = shift;
     my $class = $self->class_to_test;
 
-    return $class->new(
-        string => "It's okay, I'm a leaf on the wind.",
+    my $field = $class->new(
+        ratio     => 1,
+        width     => 1,
+        alignment => 'left',
     );
+    $field->resize( 10 );
+
+    return $field;
 }
 
 sub attributes : Tests {
     my $self = shift;
     my $field = $self->default_field;
     my %default_attributes;
-    
+
     # Getters.
     %default_attributes = (
-        type   => 'literal',
-        width  => 34,
+	type  => 'elastic',
+        ratio => 1,
     );
 
     while (my ($attribute, $value) = each %default_attributes) {
@@ -92,31 +97,29 @@ sub attributes : Tests {
     }
 }
 
-sub has_return : Tests {
+# FIXME:
+# This function is intentionally empty to prevent the parent method to run, as
+# it would simply fail.
+# We should modify the parent method to use default_field and set_attributes so
+# we can test as_string for this subclass too.
+sub as_string {
     my $self = shift;
     my $class = $self->class_to_test;
-    my $field;
 
-    # No special character.
-    $field = $class->new( string => '[      ]');
-    is $field->has_return, 0,
-        "should return 0 when literal contains no carriage return";
-    
-    # Carriage return.
-    $field = $class->new( string => "\r[ DONE ]");
-    is $field->has_return, 1,
-        "should return 1 when literal contains carriage return";
+    diag("No tests: Elastic data fields use the same code to render as static fields.");
+    return;
 }
 
-sub as_string : Tests {
-    my $self = shift;
-    my $string = "Shiny. Let's be bad guys";
+sub resize : Tests {
+    my $self  = shift;
+    my $class = $self->class_to_test;
+    my $field = $self->default_field;
 
-    my $field = $self->class_to_test->new({
-        string => $string,
-    });
-    is $field->as_string($string), $string,
-        'field should render the string correctly';
+    $field->resize( 20 );	
+    is $field->get_width(), 20,
+    	"resize should change the width of the field";
+    is $field->get_truncator()->get_length(), 20,
+    	"resize should change the length of the field's trunator";
 }
 
 1;

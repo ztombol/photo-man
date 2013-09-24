@@ -69,99 +69,119 @@ sub create_default_field {
     my $class = $self->class_to_test;
 
     return $class->new(
-        width     => 20,
+        width     => 19,
         alignment => 'left',
+        truncator => TCO::String::Truncator->new(
+            method => 'beginning',
+            length => 19,
+        ),
     );
+}
+
+sub attributes : Tests {
+    my $self = shift;
+    my $field = $self->default_field;
+    my %default_attributes;
+    
+    # Getters.
+    %default_attributes = (
+        type      => 'data',
+        width     => 19,
+        truncator => TCO::String::Truncator->new(
+            method => 'beginning',
+            length => 19,
+        ),
+    );
+
+    while (my ($attribute, $value) = each %default_attributes) {
+        my $getter = "get_$attribute";
+        can_ok $field, $getter;
+        eq_or_diff $field->$getter(), $value,
+            "getter for '$attribute' should be correct";
+    }
+    
+    # Setters.
+    %default_attributes = (
+        width     => 29,
+        truncator => TCO::String::Truncator->new(
+            method => 'beginning',
+            length => 29,
+        ),
+    );
+
+    while (my ($attribute, $value) = each %default_attributes) {
+	my $setter = "set_$attribute";
+	my $getter = "get_$attribute";
+        can_ok $field, $setter;
+        $field->$setter( $value );
+        eq_or_diff $field->$getter(), $value,
+            "setter for '$attribute' should be correct";
+    }
 }
 
 sub as_string : Tests {
     my $self = shift;
-
-    # Test rendering with all kinds of data.
-    $self->data_padding;
-    $self->data_truncation;
-    $self->data_user_truncator;
-}
-
-# Testing padding with data that is shorter than the field.
-sub data_padding {
-    my $self = shift;
+    my $class = $self->class_to_test;
     my $field;
-    my $string = "Shiny!";
+    my $string;
+
+    #
+    # Padding.
+    #
+    $string = 'Shiny!';
 
     # Left.
-    $field = $self->class_to_test->new(
-        width     => 20,
+    $field = $class->new(
+        width     => 19,
         alignment => 'left',
     );
-    is $field->as_string($string), 'Shiny!              ',
-        'untruncated, left aligned data should be rendered correctly';
-    
+    is $field->as_string( $string ), 'Shiny!             ',
+        'left aligned data should be padded correctly';
+
+    # Right.
+    $field = $class->new(
+        width     => 19,
+        alignment => 'right',
+    );
+    is $field->as_string( $string ), '             Shiny!',
+        'right aligned data should be padded correctly';
+
     # Centre.
-    $field = $self->class_to_test->new(
-        width     => 20,
+    $field = $class->new(
+        width     => 19,
         alignment => 'centre',
     );
-    is $field->as_string($string), '       Shiny!       ',
-        'untruncated, centre aligned data should be rendered correctly';
+    is $field->as_string( $string ), '      Shiny!       ',
+        'centred data should be padded correctly';
+
+    #
+    # Truncating.
+    #
+    $string = "Did you see the chandelier? It's hovering.";
+    
+    # Left.
+    $field = $self->class_to_test->new(
+        width     => 19,
+        alignment => 'left',
+    );
+    is $field->as_string( $string ), 'Did you see the ...',
+        'left aligned data should be truncated correctly';
     
     # Right.
     $field = $self->class_to_test->new(
-        width     => 20,
+        width     => 19,
         alignment => 'right',
     );
-    is $field->as_string($string), '              Shiny!',
-        'untruncates, right aligned data should be rendered correctly';
-}
-
-# Testing truncation with data that is longer than the field.
-sub data_truncation {
-    my $self = shift;
-    my $field;
-    my $string = "Did you see the chandelier? It's hovering.";
-    
-    # Left.
-    $field = $self->class_to_test->new(
-        width     => 20,
-        alignment => 'left',
-    );
-    is $field->as_string($string), 'Did you see the c...',
-        'truncated, left aligned data should be rendered correctly';
+    is $field->as_string($string), "...? It's hovering.",
+        'right aligned data should be truncated correctly';
 
     # Centre.
     $field = $self->class_to_test->new(
-        width     => 20,
+        width     => 19,
         alignment => 'centre',
     );
-    is $field->as_string($string), 'Did you see the c...',
-        'truncated, centre aligned data should be rendered correctly';
-    
-    # Right.
-    $field = $self->class_to_test->new(
-        width     => 20,
-        alignment => 'right',
-    );
-    is $field->as_string($string), "...r? It's hovering.",
-        'truncated, right aligned data should be rendered correctly';
-}
-
-# Testing truncation with user specified truncators.
-sub data_user_truncator {
-    my $self = shift;
-    my $field;
-    my $string = "Did you see the chandelier? It's hovering.";
-    
-    # Left.
-    $field = $self->class_to_test->new(
-        width     => 20,
-        alignment => 'left',
-        truncator => TCO::String::Truncator->new(
-            method => 'beginning',
-            length => 20,
-        ),
-    );
-    is $field->as_string($string), "...r? It's hovering.",
-        'data should be rendered correctly with user specified truncator';
+    is $field->as_string($string), 'Did you see the ...',
+        'centred data should be truncated correctly';
 }
 
 1;

@@ -82,4 +82,22 @@ sub constructor : Tests {
     isa_ok $self->default_field, $class;
 }
 
+sub attributes : Tests {
+    my $self = shift;
+    my $field = $self->default_field;
+    my %default_attributes;
+    
+    # Getters.
+    %default_attributes = (
+        type => 'stop',
+    );
+
+    while (my ($attribute, $value) = each %default_attributes) {
+        my $getter = "get_$attribute";
+        can_ok $field, $getter;
+        eq_or_diff $field->$getter(), $value,
+            "getter for '$attribute' should be correct";
+    }
+}
+
 1;

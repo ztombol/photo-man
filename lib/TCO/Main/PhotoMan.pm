@@ -93,8 +93,7 @@ sub run {
     print ":: Processing images\n";
 
     # Print column header.
-    if ( $is_verbose ) { }
-    else               { $header->print(); }
+    $class->print_header( %args );
 
     # Assemble pattern that will be used for globbing.
     my $pattern = '{' . join(',', @argv) . '}';
@@ -113,6 +112,17 @@ sub run {
 
     # Print summary
     $class->print_summary( $manager);
+}
+
+sub print_header {
+    my $class = shift;
+    my %arg_for = @_;
+
+    if ( not $is_verbose ) {
+        $header->print('file name');
+        $header->print('new path') if ( defined $arg_for{move} || defined $arg_for{rename} );
+    }
+
 }
 
 ###############################################################################
@@ -429,8 +439,9 @@ sub init_output {
         # Verbose (vertical) output. Print messages on their own separate line.
         $out_header = TCO::Output::Columnar::Format->new( format  => "@<\n" );
         $out_record = TCO::Output::Columnar::Format->new(
-            format  => "[@|||||] @>>>>>>>>>>>> > @...<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n",
-            control => "        ^             ^                                        ",
+            format  => "[@|||||] @>>>>>>>>>>>> > %...<\n",
+            control => "        ^             ^         ",
+            width   => 80,
         );
     }
     else {
@@ -439,22 +450,24 @@ sub init_output {
 
         # Base: result and filename.
         $out_header = TCO::Output::Columnar::Format->new(
-            # This is SHORTER by ONE character so we can have a different
-            # trailing character depending if move/rename is specified or not.
-            #
-            #          v---------- complete length ----------v
-            format  => "[result] [ file                     "
-                    . ( (defined $args{move} || defined $args{rename})
-                    ? " " : "]" ),
+            # We append the trailing characters depending on the configuration
+            # (if move/rename is specified or not).
+            format => "[result] [ %<"
+                   . ( (defined $args{move} || defined $args{rename})
+                   ? " " : " ]" ),
+            width  => 80,
         );
         $out_record = TCO::Output::Columnar::Format->new(
-            format  => "[      ] @...<<<<<<<<<<<<<<<<<<<<<<<<",
+            format => "[      ] %...<",
+            # FIXME: +9 to account for the '\r...' portion, remove when special
+            #        fields are implemented
+            width  => 80+9,
         );
      
         # Move and rename.
         if ( defined $args{ move } || defined $args{ rename } ) {
-            $out_header->append( format => " > action > new path                   ]" );
-            $out_record->append( format => " >@|||||||> @...<<<<<<<<<<<<<<<<<<<<<<<<" );
+            $out_header->append( format => " > action > %< ]" );
+            $out_record->append( format => " >@|||||||> %...<" );
         }
 
         # Timestamp fix.

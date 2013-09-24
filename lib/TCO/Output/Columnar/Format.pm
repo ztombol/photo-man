@@ -31,6 +31,7 @@ use namespace::autoclean;
 use Carp 'croak';
 
 use TCO::Output::Columnar::Field::Data;
+use TCO::Output::Columnar::Field::Data::ElasticData;
 use TCO::Output::Columnar::Field::Literal;
 use TCO::Output::Columnar::Field::Stop;
 
@@ -63,6 +64,17 @@ has 'position' => (
     }
 );
 
+# Maximum width the format can stretch to with elastic fields.
+has 'width' => (
+    is      => 'rw',
+    isa     => 'Int', # TODO: non negative integer
+    default => 100, # TODO: set this to console width
+    trigger => sub {
+        my ( $self, $width, $old_width ) = @_;
+        $self->_stretch() if $self->_has_elastic;
+    }
+);
+
 around BUILDARGS => sub {
     my $orig = shift;
     my $class = shift;
@@ -76,10 +88,25 @@ around BUILDARGS => sub {
     my $control = $args_ref->{control} || ' ' x length $format;
 
     # Produce fields that corresponds to the format described in format and control.
-    my $fields = $class->_parse_control( $format, $control );
+    my $fields = $class->_parse_control(
+        format  => $format,
+        control => $control,
+    );
 
-    return $class->$orig( fields => $fields );
+    # Arguments to constructor.
+    my %args;
+    $args{ fields } = $fields;
+    $args{ width  } = $args_ref->{ width } if ( defined $args_ref->{ width } );
+
+    return $class->$orig( %args );
 };
+
+sub BUILD {
+    my $self = shift;
+    my $args_ref = shift;
+
+    $self->_stretch() if $self->_has_elastic;
+}
 
 # Creates an array of fields by parsing the format and optinally the control
 # string. The format string describes the visual format of the output. The
@@ -134,10 +161,11 @@ around BUILDARGS => sub {
 # @returns        reference to array of fields
 sub _parse_control {
     my $class = shift;
-    my $fmt_str = shift;
-    my $ctrl_str = shift;
+    my %arg_for = @_;
+    my $fmt_str = $arg_for{format};
+    my $ctrl_str = $arg_for{control};
 
-    # Regex extracting a group from the control string.
+    # Regex, extractinig a group from the control string.
     my $ctrl_regex = qr{
         (?<group>
     	    (\^|\A)  # beginning of line or ^
@@ -145,20 +173,19 @@ sub _parse_control {
         )
     }x;
 
-    # Extract format string for each field group and retrieve the corresponding
-    # fields.
+    # Extract format string for each group and parse them separately.
     my @fields;
     my $grp_start = 0;  # First character of format string in current group.
 
     while ( $ctrl_str =~ /$ctrl_regex/g ) {
-        # Extract the next portion of the format string to parse.
-        my $grp_len = length $1;
+        # Extract the next portion of the format string.
+        my $grp_len = length $+{ group };
         my $grp_str = substr( $fmt_str, $grp_start, $grp_len );
 
-        # Parse extracted format string and append new fields.
+        # Parse group and append new fields.
         push @fields, $class->_parse_format( $grp_str );
 
-        # There is a stop field after every group.
+        # Append a stop field after every group.
         push @fields, TCO::Output::Columnar::Field::Stop->new();
 
     	$grp_start += $grp_len;
@@ -187,9 +214,10 @@ sub _parse_format {
     my $fmt_str = shift;
     my @fields;
 
-    # Regex to match the different fields.
+    # Regex, matching different fields types.
     my $fmt_regex = qr{
-        (?<f_d>@                # data field
+        (?<f_d>                 # data field
+            (?<f_t>@|%)         #    type (static, elastic)
             (?<t_b>\.\.\.)?     #    truncate at the beginning
             (                   #    alignment:
                 (?<a_l><+)  |   #        left, or
@@ -198,10 +226,10 @@ sub _parse_format {
             )                   #
             (?<t_e>\.\.\.)?     #    truncate at the end
         ) |                     # or
-        (?<f_l>[^@]+)           # literal field
+        (?<f_l>[^@%]+)          # literal field
     }x;
     
-    # Parse each field group separately.
+    # Parse each field one by one.
     while ( $fmt_str =~ /$fmt_regex/g ) {
         # Instantiate new field.
         my $new_field;
@@ -243,10 +271,21 @@ sub _parse_format {
                 }
 
                 # Instantiate data field.
-                $new_field = TCO::Output::Columnar::Field::Data->new(
-                    alignment => $align{ $al },
-                    width     => $length,
-                );
+                if ( $+{ f_t } eq '@' ) {
+                    # Static field.
+                    $new_field = TCO::Output::Columnar::Field::Data->new(
+                        alignment => $align{ $al },
+                        width     => $length,
+                    );
+                }
+                else {
+                    # Elastic field.
+                    $new_field = TCO::Output::Columnar::Field::Data::ElasticData->new(
+                        alignment => $align{ $al },
+                        width     => 1,
+                        ratio     => $length,
+                    );
+                }
 
                 # Set truncator if any.
                 $new_field->set_truncator( $truncator ) if defined $truncator;
@@ -261,6 +300,64 @@ sub _parse_format {
     
     # Return array of fields.
     return @fields;
+}
+
+# Checks if the formatter has elastic fields specified.
+#
+# @returns 0, if the formatter does not contain elastic fields
+#          1, otherwise
+sub _has_elastic {
+    my $self = shift;
+    
+    foreach ( @{$self->_get_fields} ) {
+        # An elastic field found.
+        return 1 if $_->get_type eq 'elastic';
+    }
+
+    # All fields are static.
+    return 0;
+}
+
+# Calculates static width of elastic fields.
+#
+# @param [in] fields  field array
+sub _stretch {
+    my $self = shift;
+    my $format_width = $self->get_width;
+
+    # Width available after substracting width of static fields.
+    my $static_width = 0;
+    # Sum of ratio of all elastic fields.
+    my $total_ratio = 0;
+    # List of elastic fields
+    my @elastic_fields;
+
+    # Calculate total ratio, elastic width and assemble array of elastic
+    # fields.
+    foreach ( @{$self->_get_fields} ) {
+        next if $_->get_type eq 'stop';
+
+        if ( $_->get_type eq 'elastic' ) {
+            $total_ratio += $_->get_ratio;
+            push @elastic_fields, $_;
+        }
+        else {
+            $static_width += $_->get_width;
+        }
+    }
+    # TODO: can the elastic fields size down to 0?
+    #       what should we do if full width is less than the static width?
+
+    # Compute static width of elastic fields. For each field we work with the
+    # total ratio of the unprocessed fields and the remaining elastic width.
+    # This prevents rounding errors and elastic fields will use exactly the
+    # space available.
+    my $elastic_width = $format_width - $static_width;
+    foreach ( @elastic_fields ) {
+        $_->resize( int( $_->get_ratio / $total_ratio * $elastic_width ) );
+        $total_ratio   -= $_->get_ratio;
+        $elastic_width -= $_->get_width;
+    }
 }
 
 # Appends new fields to the end of a formatter. Accepts the same parameters as
@@ -328,10 +425,16 @@ sub append {
     }
 
     # Parse format and control to get new fields.
-    my $fields = $self->_parse_control( $format, $control );
+    my $fields = $self->_parse_control(
+        format  => $format,
+        control => $control
+    );
 
     # Append new fields.
     push @{$self->_get_fields}, @{$fields};
+
+    # Stretch elastic fields if there's any.
+    $self->_stretch() if $self->_has_elastic;
 }
 
 # Removes the last field of the array if that is a stop field. Leaves the field
@@ -342,6 +445,46 @@ sub _remove_last_stop {
     if ( (@{$self->_get_fields}[-1])->get_type eq 'stop' ) {
         pop $self->_get_fields;
     }
+}
+
+# Prints the supplied data formatted according to the fields of the formatter.
+# Mulitple pieces of data can be supplied that will be used in FIFO order and
+# fed into the data fields. Fields are processed until the first stop or data
+# field is encountered after the last piece of data is consumed. When called
+# without data, the subroutine will print literal fields up to the next data or
+# stop field.
+#
+# @param [in] @data  data to format
+sub print {
+    my ( $self, @data ) = @_;
+    
+    # Process fields until we encounter the first stop or data field after
+    # consuming all user supplied data.
+    while ( @data != 0
+         || ($self->_type_of_next ne 'data'
+         &&  $self->_type_of_next ne 'elastic'
+         &&  $self->_type_of_next ne 'stop') ) {
+
+        my $field = $self->_get_next_field;
+
+        # Print data and literal fields.
+        if ( $field->get_type eq 'data'
+          || $field->get_type eq 'elastic' ) {
+            print $field->as_string( shift @data );
+        }
+        elsif ( $field->get_type eq 'literal' ) {
+            print $field->as_string;
+        }
+    }
+}
+
+# Returns the type of the next field. This subroutine peeks at the next field
+# and does not cause the position pointer to jump to the next field.
+#
+# @returns the type of the next field
+sub _type_of_next {
+    my $self = shift;
+    return (@{$self->_get_fields}[ $self->_get_position ])->get_type;
 }
 
 # Returns the next field to be processed (i.e field at the current position).
@@ -359,42 +502,6 @@ sub _get_next_field {
     return $this->_get_fields->[$position];
 }
 
-# Returns the type of the next field. This subroutine peeks at the next field
-# and does not cause the position pointer to jump to the next field.
-#
-# @returns the type of the next field
-sub _type_of_next {
-    my $self = shift;
-    return (@{$self->_get_fields}[ $self->_get_position ])->get_type;
-}
-
-# Prints the supplied data formatted according to the fields of the formatter.
-# Mulitple pieces of data can be supplied that will be used in FIFO order and
-# fed into the data fields. Fields are processed until the first stop or data
-# field is encountered after the last piece of data is consumed. When called
-# without data, the subroutine will print literal fields up to the next data or
-# stop field.
-#
-# @param [in] @data  data to format
-sub print {
-    my ( $self, @data ) = @_;
-    
-    # Process fields until we encounter the first stop or data field after
-    # consuming all user supplied data.
-    while ( @data != 0
-         || ($self->_type_of_next ne 'data' && $self->_type_of_next ne 'stop') ) {
-
-        my $field = $self->_get_next_field;
-
-        # Print data and literal fields.
-        if ( $field->get_type eq 'data' ) {
-            print $field->as_string( shift @data );
-        }
-        elsif ( $field->get_type eq 'literal' ) {
-            print $field->as_string;
-        }
-    }
-}
 
 # Reset the formatter back to the beginning of the field array and print a line
 # feed as well. This subroutine can be used to ignore the remaining fields in

@@ -81,6 +81,38 @@ sub constructor : Tests {
     isa_ok $self->default_truncator, $class;
 }
 
+sub attributes : Tests {
+    my $self = shift;
+    my $field = $self->default_truncator;
+    my %default_attributes;
+
+    # Getters.
+    %default_attributes = (
+        length    => '10',
+    );
+
+    while (my ($attribute, $value) = each %default_attributes) {
+        my $getter = "get_$attribute";
+        can_ok $field, $getter;
+        eq_or_diff $field->$getter(), $value,
+            "getter for '$attribute' should be correct";
+    }
+    
+	# Setters.
+    %default_attributes = (
+        length    => '20',
+    );
+
+    while (my ($attribute, $value) = each %default_attributes) {
+		my $setter = "set_$attribute";
+		my $getter = "get_$attribute";
+        can_ok $field, $setter;
+        $field->$setter( $value );
+        eq_or_diff $field->$getter(), $value,
+            "setter for '$attribute' should be correct";
+    }
+}
+
 sub truncate : Tests {
     my $self = shift;
 
