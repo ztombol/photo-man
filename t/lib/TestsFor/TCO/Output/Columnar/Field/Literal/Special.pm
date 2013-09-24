@@ -20,10 +20,10 @@
 #
 
 
-package TestsFor::TCO::Output::Columnar::Field::Literal;
+package TestsFor::TCO::Output::Columnar::Field::Literal::Special;
 
 use Test::Class::Most
-    parent      => 'TestsFor::TCO::Output::Columnar::Field';
+    parent      => 'TestsFor::TCO::Output::Columnar::Field::Literal';
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -69,7 +69,7 @@ sub create_default_field {
     my $class = $self->class_to_test;
 
     return $class->new(
-        string => "It's okay, I'm a leaf on the wind.",
+        string => "\r",
     );
 }
 
@@ -80,8 +80,8 @@ sub attributes : Tests {
     
     # Getters.
     %default_attributes = (
-        type   => 'literal',
-        width  => 34,
+        type   => 'special',
+        width  => 0,
     );
 
     while (my ($attribute, $value) = each %default_attributes) {
@@ -94,7 +94,7 @@ sub attributes : Tests {
 
 sub as_string : Tests {
     my $self = shift;
-    my $string = "Shiny. Let's be bad guys";
+    my $string = "\r";
 
     my $field = $self->class_to_test->new({
         string => $string,

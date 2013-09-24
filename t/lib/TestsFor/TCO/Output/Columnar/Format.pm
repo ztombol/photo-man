@@ -47,9 +47,7 @@ sub setup : Tests(setup) {
     # Instantiate default formatter object.
     $self->default_formatter(
         $class->new(
-            # TODO: use this format when \r is taken care of.
-            #format => "[      ] @>>>>>>> => %<< %>\r[@|||||]\n",
-            format => "[      ] @>>>>>>> => %<< %>\n",
+            format => "[      ] @>>>>>>> => %<< %>\r[@|||||]\n",
             width  => 40,
         )
     );
@@ -132,21 +130,27 @@ sub attributes : Tests {
         ),
         TCO::Output::Columnar::Field::Data::ElasticData->new(
             ratio     => 2,
-            width     => 23,
+            width     => 24,
             alignment => 'right',
             truncator => TCO::String::Truncator->new(
                 method => 'beginning',
-                length => 23,
+                length => 24,
             ),
         ),
-        #TCO::Output::Columnar::Field::Literal->new(
-        #    string => "\r[",
-        #),
-        #TCO::Output::Columnar::Field::Data->new(
-        #    width     => 6,
-        #    alignment => 'centre',
-        #),
+        TCO::Output::Columnar::Field::Literal::Special->new(
+            string => "\r",
+        ),
         TCO::Output::Columnar::Field::Literal->new(
+            string => "[",
+        ),
+        TCO::Output::Columnar::Field::Data->new(
+            width     => 6,
+            alignment => 'centre',
+        ),
+        TCO::Output::Columnar::Field::Literal->new(
+            string => "]",
+        ),
+        TCO::Output::Columnar::Field::Literal::Special->new(
             string => "\n",
         ),
         TCO::Output::Columnar::Field::Stop->new(),
@@ -168,6 +172,24 @@ sub _parse_format : Tests {
         ),
     );
     eq_or_diff \@have, \@want, "literal";
+
+    # Special field.
+    @have = $class->_parse_format( "[  ]\r[OK]\n" );
+    @want = (
+        TCO::Output::Columnar::Field::Literal->new(
+            string => "[  ]",
+        ),
+        TCO::Output::Columnar::Field::Literal::Special->new(
+            string => "\r",
+        ),
+        TCO::Output::Columnar::Field::Literal->new(
+            string => "[OK]",
+        ),
+        TCO::Output::Columnar::Field::Literal::Special->new(
+            string => "\n",
+        ),
+    );
+    eq_or_diff \@have, \@want, "special";
 
 
     #
@@ -332,7 +354,7 @@ sub _parse_control : Tests {
             width     => 1,
             alignment => 'left',
         ),
-        TCO::Output::Columnar::Field::Literal->new(
+        TCO::Output::Columnar::Field::Literal::Special->new(
             string => "\n",
         ),
         TCO::Output::Columnar::Field::Stop->new(),
@@ -366,7 +388,7 @@ sub _parse_control : Tests {
             width     => 1,
             alignment => 'left',
         ),
-        TCO::Output::Columnar::Field::Literal->new(
+        TCO::Output::Columnar::Field::Literal::Special->new(
             string => "\n",
         ),
         TCO::Output::Columnar::Field::Stop->new(),
@@ -395,11 +417,11 @@ sub _stretch : Tests {
         ),
         TCO::Output::Columnar::Field::Data::ElasticData->new(
             ratio     => 2,
-            width     => 13,
+            width     => 14,
             alignment => 'left',
             truncator => TCO::String::Truncator->new(
                 method => 'end',
-                length => 13,
+                length => 14,
             ),
         ),
         TCO::Output::Columnar::Field::Literal->new(
@@ -414,7 +436,7 @@ sub _stretch : Tests {
                 length => 14,
             ),
         ),
-        TCO::Output::Columnar::Field::Literal->new(
+        TCO::Output::Columnar::Field::Literal::Special->new(
             string => "\n",
         ),
         TCO::Output::Columnar::Field::Stop->new(),
@@ -445,13 +467,71 @@ sub _stretch : Tests {
             width     => 4,
             alignment => 'left',
         ),
-        TCO::Output::Columnar::Field::Literal->new(
+        TCO::Output::Columnar::Field::Literal::Special->new(
             string => "\n",
         ),
         TCO::Output::Columnar::Field::Stop->new(),
     );
     eq_or_diff $fmt->_get_fields, \@want,
         "a static only format should not be stretched";
+    
+    # Special.
+    $fmt = $class->new(
+        format => "[      ] @>>>>>>> = %< %<\r[@|||||]\n",
+        width  => 80,
+    );
+    @want = (
+        TCO::Output::Columnar::Field::Literal->new(
+            string => "[      ] ",
+        ),
+        TCO::Output::Columnar::Field::Data->new(
+            width     => 8,
+            alignment => 'right',
+        ),
+        TCO::Output::Columnar::Field::Literal->new(
+            string => " = ",
+        ),
+        TCO::Output::Columnar::Field::Data::ElasticData->new(
+            ratio     => 2,
+            width     => 29,
+            alignment => 'left',
+            truncator => TCO::String::Truncator->new(
+                method => 'end',
+                length => 29,
+            ),
+        ),
+        TCO::Output::Columnar::Field::Literal->new(
+            string => " ",
+        ),
+        TCO::Output::Columnar::Field::Data::ElasticData->new(
+            ratio     => 2,
+            width     => 30,
+            alignment => 'left',
+            truncator => TCO::String::Truncator->new(
+                method => 'end',
+                length => 30,
+            ),
+        ),
+        TCO::Output::Columnar::Field::Literal::Special->new(
+            string => "\r",
+        ),
+        TCO::Output::Columnar::Field::Literal->new(
+            string => "[",
+        ),
+        TCO::Output::Columnar::Field::Data->new(
+            width     => 6,
+            alignment => 'centre',
+        ),
+        TCO::Output::Columnar::Field::Literal->new(
+            string => "]",
+        ),
+        TCO::Output::Columnar::Field::Literal::Special->new(
+            string => "\n",
+        ),
+        TCO::Output::Columnar::Field::Stop->new(),
+    );
+    eq_or_diff $fmt->_get_fields, \@want,
+        "fields after a carriage return should not be contribute to format width";
 }
 
 sub append  : Tests {
@@ -631,7 +711,20 @@ sub print : Tests {
         width   => 35,
     );
     trap { $fmt->print('tako.jpeg', 'done', 'crab.jpg', 'done') };
-    $trap->stdout_is( "filename = tako.jpeg      [ done ]\nfilename = crab.jpg       [ done ]\n", "(elastic) printing with data until the first data field should be correct" );
+    $trap->stdout_is( "filename = tako.jpeg       [ done ]\nfilename = crab.jpg        [ done ]\n",
+        "a single formatter should print multiple records correctly" );
+
+
+    #
+    # Special
+    #
+
+    # \r.
+    $fmt = $class->new(
+        format  => "[  ] completed!\r[OK]\n",
+    );
+    trap { $fmt->print() };
+    $trap->stdout_is( "[  ] completed!\r[OK]\n", "carriage return should be printed correctly" );
 }
 
 1;

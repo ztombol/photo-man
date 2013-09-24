@@ -452,22 +452,21 @@ sub init_output {
         $out_header = TCO::Output::Columnar::Format->new(
             # We append the trailing characters depending on the configuration
             # (if move/rename is specified or not).
-            format => "[result] [ %<"
-                   . ( (defined $args{move} || defined $args{rename})
-                   ? " " : " ]" ),
+            format => "[result] [ %<",
             width  => 80,
         );
         $out_record = TCO::Output::Columnar::Format->new(
             format => "[      ] %...<",
-            # FIXME: +9 to account for the '\r...' portion, remove when special
-            #        fields are implemented
-            width  => 80+9,
+            width  => 80,
         );
      
         # Move and rename.
         if ( defined $args{ move } || defined $args{ rename } ) {
             $out_header->append( format => " > action > %< ]" );
             $out_record->append( format => " >@|||||||> %...<" );
+        }
+        else {
+            $out_header->append( format => " ]" );
         }
 
         # Timestamp fix.

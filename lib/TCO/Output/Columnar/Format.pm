@@ -33,6 +33,7 @@ use Carp 'croak';
 use TCO::Output::Columnar::Field::Data;
 use TCO::Output::Columnar::Field::Data::ElasticData;
 use TCO::Output::Columnar::Field::Literal;
+use TCO::Output::Columnar::Field::Literal::Special;
 use TCO::Output::Columnar::Field::Stop;
 
 our $VERSION = '0.1';
@@ -168,7 +169,7 @@ sub _parse_control {
     # Regex, extractinig a group from the control string.
     my $ctrl_regex = qr{
         (?<group>
-    	    (\^|\A)  # beginning of line or ^
+            (\^|\A)  # beginning of line or ^
             [^^]+    # at least one character before the next group
         )
     }x;
@@ -188,7 +189,7 @@ sub _parse_control {
         # Append a stop field after every group.
         push @fields, TCO::Output::Columnar::Field::Stop->new();
 
-    	$grp_start += $grp_len;
+        $grp_start += $grp_len;
     }
 
     # Return reference to array.
@@ -226,9 +227,10 @@ sub _parse_format {
             )                   #
             (?<t_e>\.\.\.)?     #    truncate at the end
         ) |                     # or
-        (?<f_l>[^@%]+)          # literal field
+        (?<f_s>[\r\n]) |        # special field, or
+        (?<f_l>[^@%\r\n]+)      # literal field
     }x;
-    
+
     # Parse each field one by one.
     while ( $fmt_str =~ /$fmt_regex/g ) {
         # Instantiate new field.
@@ -238,6 +240,12 @@ sub _parse_format {
             # Literal field matched.
             $new_field = TCO::Output::Columnar::Field::Literal->new(
                 string => $+{ f_l },
+            );
+        }
+        elsif ( defined $+{ f_s } ) {
+            # Special field matched.
+            $new_field = TCO::Output::Columnar::Field::Literal::Special->new(
+                string => $+{ f_s },
             );
         }
         else {
@@ -326,6 +334,7 @@ sub _stretch {
     my $format_width = $self->get_width;
 
     # Width available after substracting width of static fields.
+    my $max_static_width = 0;
     my $static_width = 0;
     # Sum of ratio of all elastic fields.
     my $total_ratio = 0;
@@ -341,6 +350,12 @@ sub _stretch {
             $total_ratio += $_->get_ratio;
             push @elastic_fields, $_;
         }
+        elsif ( $_->get_type eq 'special' ) {
+            $max_static_width = $static_width if $max_static_width < $static_width;
+            $static_width = 0;
+	    # FIXME: we should do stretching from here so that records with
+	    #        multiple lines will be stretched line by line.
+        }
         else {
             $static_width += $_->get_width;
         }
@@ -352,7 +367,7 @@ sub _stretch {
     # total ratio of the unprocessed fields and the remaining elastic width.
     # This prevents rounding errors and elastic fields will use exactly the
     # space available.
-    my $elastic_width = $format_width - $static_width;
+    my $elastic_width = $format_width - ($max_static_width < $static_width ? $static_width : $max_static_width);
     foreach ( @elastic_fields ) {
         $_->resize( int( $_->get_ratio / $total_ratio * $elastic_width ) );
         $total_ratio   -= $_->get_ratio;
@@ -472,7 +487,8 @@ sub print {
           || $field->get_type eq 'elastic' ) {
             print $field->as_string( shift @data );
         }
-        elsif ( $field->get_type eq 'literal' ) {
+        elsif ( $field->get_type eq 'literal'
+             || $field->get_type eq 'special' ) {
             print $field->as_string;
         }
     }
