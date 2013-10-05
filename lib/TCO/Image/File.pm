@@ -35,7 +35,7 @@ use File::Copy;
 use File::Path qw(make_path);
 use File::LibMagic;
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 $VERSION = eval $VERSION;
 
 # Filename of image.

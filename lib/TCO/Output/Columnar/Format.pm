@@ -38,7 +38,7 @@ use TCO::Output::Columnar::Field::Literal;
 use TCO::Output::Columnar::Field::Literal::Special;
 use TCO::Output::Columnar::Field::Stop;
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 $VERSION = eval $VERSION;
 
 # Array of output fields.

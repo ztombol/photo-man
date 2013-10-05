@@ -54,7 +54,7 @@ use TCO::Output::Columnar::Format;
 use TCO::Image::File;
 use TCO::Image::PhotoMan;
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 $VERSION = eval $VERSION;
 
 

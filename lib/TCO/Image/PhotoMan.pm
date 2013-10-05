@@ -35,7 +35,7 @@ use File::Compare;
 use DateTime;
 use DateTime::Format::Strptime;
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 $VERSION = eval $VERSION;
 
 # Make changes to files (1) or not (0).

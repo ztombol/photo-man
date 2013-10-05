@@ -31,9 +31,6 @@ use MooseX::FollowPBP;
 use namespace::autoclean;
 use Carp;
 
-our $VERSION = '0.1';
-$VERSION = eval $VERSION;
-
 # Type of the field as supplied by the subclasses.
 has 'type' => (
     is       => 'ro',

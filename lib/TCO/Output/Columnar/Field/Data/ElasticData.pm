@@ -33,9 +33,6 @@ use Carp 'croak';
 
 extends 'TCO::Output::Columnar::Field::Data';
 
-our $VERSION = '0.1';
-$VERSION = eval $VERSION;
-
 use TCO::Output::Columnar::Types;
 #use TCO::String::Truncator;
 

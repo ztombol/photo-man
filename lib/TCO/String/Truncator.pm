@@ -27,7 +27,7 @@ use MooseX::FollowPBP;
 use namespace::autoclean;
 use Carp 'croak';
 
-our $VERSION = '0.1';
+our $VERSION = '0.2';
 $VERSION = eval $VERSION;
 
 use TCO::String::Truncator::Types;

@@ -31,9 +31,6 @@ use namespace::autoclean;
 
 extends 'TCO::Output::Columnar::Field::Literal';
 
-our $VERSION = '0.1';
-$VERSION = eval $VERSION;
-
 around BUILDARGS => sub {
     my $orig = shift;
     my $class = shift;

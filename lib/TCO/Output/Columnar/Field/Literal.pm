@@ -32,9 +32,6 @@ use Carp;
 
 extends 'TCO::Output::Columnar::Field';
 
-our $VERSION = '0.1';
-$VERSION = eval $VERSION;
-
 # String to output.
 has 'string' => (
     is       => 'ro',
