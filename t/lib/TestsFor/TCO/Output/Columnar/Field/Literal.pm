@@ -23,7 +23,7 @@
 package TestsFor::TCO::Output::Columnar::Field::Literal;
 
 use Test::Class::Most
-    parent      => 'TestsFor::TCO::Output::Columnar::Field';
+    parent => 'TestsFor::TCO::Output::Columnar::Field';
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -63,44 +63,35 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
-# Instantiates default field object.
-sub create_default_field {
-    my $self  = shift;
-    my $class = $self->class_to_test;
-
-    return $class->new(
+# Attributes of the default object.
+sub _default_attributes {
+    return {
         string => "It's okay, I'm a leaf on the wind.",
-    );
+    };
 }
 
-sub attributes : Tests {
+sub type : Tests {
     my $self = shift;
     my $field = $self->default_field;
-    my %default_attributes;
-    
-    # Getters.
-    %default_attributes = (
-        type   => 'literal',
-        width  => 34,
-    );
 
-    while (my ($attribute, $value) = each %default_attributes) {
-        my $getter = "get_$attribute";
-        can_ok $field, $getter;
-        eq_or_diff $field->$getter(), $value,
-            "getter for '$attribute' should be correct";
-    }
+    is $field->get_type, 'literal',
+        "correct type should be set implicitly";
+}
+
+sub get_width : Tests {
+    my $self = shift;
+    my $field = $self->default_field;
+
+    is $field->get_width, length $self->default_attributes->{ string },
+        "'get_width' should return the length of the string";
 }
 
 sub as_string : Tests {
     my $self = shift;
-    my $string = "Shiny. Let's be bad guys";
+    my $field = $self->default_field;
 
-    my $field = $self->class_to_test->new({
-        string => $string,
-    });
-    is $field->as_string(), $string,
-        'field should render the string correctly';
+    is $field->as_string, $self->default_attributes->{ string },
+        "'as_string' should return the string"
 }
 
 1;

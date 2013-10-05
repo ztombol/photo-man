@@ -30,10 +30,12 @@ use Carp 'croak';
 our $VERSION = '0.1';
 $VERSION = eval $VERSION;
 
+use TCO::String::Truncator::Types;
+
 # Method of truncation specifying how and which parts to cut.
 has 'method' => (
     is       => 'ro',
-    isa      => 'Str',
+    isa      => 'TCO::String::Truncator::Types::Method',
     required => 1,
     reader   => '_get_method',
 );
@@ -41,8 +43,7 @@ has 'method' => (
 # Maximum length of the truncated string.
 has 'length' => (
     is       => 'rw',
-#    isa      => 'TCO::String::Types::NonNegativeInteger',
-    isa      => 'Int',
+    isa      => 'TCO::String::Truncator::Types::Length',
     required => 1,
 );
 

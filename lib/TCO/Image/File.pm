@@ -126,7 +126,9 @@ sub get_filename {
     return $1;
 }
 
-# Returns the extension of the file (portion after the last dot).
+# Returns the extension of the file (portion after the last dot). The extension
+# can be determined from the basename (default) or using the magic number of
+# the file.
 #
 # @param [in] $0  file object
 # @param [in] $1  use LibMagic to get extension?
@@ -134,7 +136,7 @@ sub get_filename {
 # @returns  extension
 sub get_extension {
     my $self = shift;
-    my $use_magic = shift;
+    my $use_magic = shift || 0;
 
     if ( $use_magic ) {
         my $magic = File::LibMagic->new();
@@ -181,7 +183,8 @@ sub get_timestamp {
 }
 
 # Moves the file and creates the directories leading up to the new location if
-# they do not exist already.
+# they do not exist already. Upon success the file system and image metadata
+# will be reloaded.
 #
 # @param [in] $1  new path of file (includes filename)
 # return  0 on success
@@ -220,8 +223,8 @@ sub move_file {
 #    return not $result;
 #}
 
-# Changes the file system modification timestamps of the file. It also
-# reloads all metadata on successul timestamp change.
+# Changes the file system modification timestamps of the file. Upon success the
+# file system and image metadata will be reloaded.
 #
 # @param [in] mtime  modification timestamp to set (DateTime ref)
 # return -1 on error

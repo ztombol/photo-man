@@ -23,7 +23,7 @@
 package TestsFor::TCO::Output::Columnar::Field::Data::ElasticData;
 
 use Test::Class::Most
-    parent      => 'TestsFor::TCO::Output::Columnar::Field::Data';
+    parent => 'TestsFor::TCO::Output::Columnar::Field::Data';
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -63,51 +63,77 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
-# Instantiates default field object.
-sub create_default_field {
-    my $self  = shift;
+# Instantiates a new elastic field and resizes it to the given width.
+sub _create_field {
+    my $self = shift;
+    my $attributes = shift;
     my $class = $self->class_to_test;
 
-    my $field = $class->new(
-        ratio     => 1,
-        width     => 1,
-        alignment => 'left',
-    );
-    $field->resize( 10 );
+    my $field = $self->next::method( $attributes );
+    $field->resize( $attributes->{ width } );
 
     return $field;
 }
 
-sub attributes : Tests {
-    my $self = shift;
-    my $field = $self->default_field;
-    my %default_attributes;
-
-    # Getters.
-    %default_attributes = (
-	type  => 'elastic',
-        ratio => 1,
-    );
-
-    while (my ($attribute, $value) = each %default_attributes) {
-        my $getter = "get_$attribute";
-        can_ok $field, $getter;
-        eq_or_diff $field->$getter(), $value,
-            "getter for '$attribute' should be correct";
-    }
+# Attributes of the default object.
+sub _default_attributes {
+    return {
+        ratio     => 1,
+        width     => 1,
+        alignment => 'left',
+    };
 }
 
-# FIXME:
-# This function is intentionally empty to prevent the parent method to run, as
-# it would simply fail.
-# We should modify the parent method to use default_field and set_attributes so
-# we can test as_string for this subclass too.
-sub as_string {
+
+sub ratio : Tests {
+    my $self = shift;
+    my $field = $self->default_field;
+
+    # Non-positive ratio.
+    throws_ok { $field->set_width( 0 ) }
+        qr/does not pass the type constraint/,
+        "trying to set a non-positive 'ratio' should fail";
+    
+    # Positive ratio.
+    lives_ok { $field->set_width( 1 ) }
+        "trying to set a positive 'ratio' should succeed";
+}
+
+sub type : Tests {
+    my $self = shift;
+    my $field = $self->default_field;
+
+    # Positive width.
+    is $field->get_type, 'elastic',
+        "correct type should be set implicitly";
+}
+
+sub _default_truncator {
     my $self = shift;
     my $class = $self->class_to_test;
 
-    diag("No tests: Elastic data fields use the same code to render as static fields.");
-    return;
+    # Default truncation methods for each alignment.
+    my %alignment_method = (
+        left   => 'end',
+        centre => 'end',
+        right  => 'beginning',
+    );
+
+    while ( my ($alignment, $method) = each %alignment_method ) {
+        my $field = $self->_create_field(
+            alignment => $alignment,
+            ratio     => 1,
+            width     => 1,
+        );
+
+        my $want = TCO::String::Truncator->new(
+            method => $method,
+            length => 1,
+        );
+
+        eq_or_diff $field->get_truncator, $want,
+            "'$alignment' aligned field should be truncated at the '$method' by default";
+    }
 }
 
 sub resize : Tests {

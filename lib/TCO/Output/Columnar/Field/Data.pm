@@ -57,6 +57,8 @@ has 'alignment' => (
 # Truncator object used to shorten data wider than the field.
 has 'truncator' => (
     is      => 'rw',
+    # FIXME: can we make this read-only?
+    #is      => 'ro',
     isa     => 'TCO::String::Truncator',
     lazy    => 1,
     builder => '_build_truncator',

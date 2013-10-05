@@ -23,7 +23,7 @@
 package TestsFor::TCO::Output::Columnar::Field::Stop;
 
 use Test::Class::Most
-    parent      => 'TestsFor::TCO::Output::Columnar::Field';
+    parent => 'TestsFor::TCO::Output::Columnar::Field';
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -43,6 +43,9 @@ sub setup : Tests(setup) {
     $self->next::method;
 
     # Setup code goes here...
+    # Set default attributes and default field object.
+    $self->default_attributes( $self->_default_attributes );
+    $self->default_field( $self->_create_field( $self->default_attributes ) );
 }
 
 sub teardown : Tests(teardown) {
@@ -63,12 +66,17 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
-# Instantiates default field object.
-sub create_default_field {
-    my $self  = shift;
+# Instantiates a new field.
+sub _create_field {
+    my $self = shift;
     my $class = $self->class_to_test;
 
-    return $class->new();
+    return $class->new;
+}
+
+# Attributes of the default object.
+sub _default_attributes {
+    return {};
 }
 
 sub constructor : Tests {
@@ -82,22 +90,12 @@ sub constructor : Tests {
     isa_ok $self->default_field, $class;
 }
 
-sub attributes : Tests {
+sub type : Tests {
     my $self = shift;
     my $field = $self->default_field;
-    my %default_attributes;
-    
-    # Getters.
-    %default_attributes = (
-        type => 'stop',
-    );
 
-    while (my ($attribute, $value) = each %default_attributes) {
-        my $getter = "get_$attribute";
-        can_ok $field, $getter;
-        eq_or_diff $field->$getter(), $value,
-            "getter for '$attribute' should be correct";
-    }
+    is $field->get_type, 'stop',
+        "correct type should be set implicitly";
 }
 
 1;

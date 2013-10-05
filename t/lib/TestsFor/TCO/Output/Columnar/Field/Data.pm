@@ -23,7 +23,7 @@
 package TestsFor::TCO::Output::Columnar::Field::Data;
 
 use Test::Class::Most
-    parent      => 'TestsFor::TCO::Output::Columnar::Field';
+    parent => 'TestsFor::TCO::Output::Columnar::Field';
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -63,125 +63,145 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
-# Instantiates default field object.
-sub create_default_field {
-    my $self  = shift;
-    my $class = $self->class_to_test;
-
-    return $class->new(
-        width     => 19,
+# Attributes of the default object.
+sub _default_attributes {
+    return {
         alignment => 'left',
+        width     => 19,
         truncator => TCO::String::Truncator->new(
             method => 'beginning',
             length => 19,
         ),
-    );
+    };
 }
 
-sub attributes : Tests {
+sub alignment : Tests {
+    my $self = shift;
+    my $class = $self->class_to_test;
+    my $attributes = $self->default_attributes;
+
+    # Valid alignments.
+    foreach ( qw/left centre right/ ) {
+        $attributes->{ alignment } = $_;
+        lives_ok { $self->_create_field( $attributes ) }
+            "trying to create a data field with '$_' alignment should succeed";
+    }
+
+    # Invalid alignment.
+    $attributes->{ alignment } = 'invalid';
+    throws_ok { $self->_create_field( $attributes ) }
+        qr/does not pass the type constraint/,
+        "trying to create a data field with an invalid alignment should fail";
+}
+
+sub truncator : Tests {
     my $self = shift;
     my $field = $self->default_field;
-    my %default_attributes;
+    my $class = $self->class_to_test;
+
+    # Setting non-truncator object.
+    throws_ok { $field->set_truncator( $field ) }
+        qr/does not pass the type constraint/,
+        "trying to set a non-truncator object as 'truncator' should fail";
     
-    # Getters.
-    %default_attributes = (
-        type      => 'data',
-        width     => 19,
-        truncator => TCO::String::Truncator->new(
-            method => 'beginning',
-            length => 19,
-        ),
+    # Setting truncator object.
+    lives_ok { $field->set_truncator(
+            TCO::String::Truncator->new(
+                method => 'beginning',
+                length => 20,
+            )
+        ) }
+        "trying to set a truncator object as 'truncator' should succeed";
+
+    # Default truncation methods for each alignment.
+    my %alignment_method = (
+        left   => 'end',
+        centre => 'end',
+        right  => 'beginning',
     );
 
-    while (my ($attribute, $value) = each %default_attributes) {
-        my $getter = "get_$attribute";
-        can_ok $field, $getter;
-        eq_or_diff $field->$getter(), $value,
-            "getter for '$attribute' should be correct";
-    }
-    
-    # Setters.
-    %default_attributes = (
-        width     => 29,
-        truncator => TCO::String::Truncator->new(
-            method => 'beginning',
-            length => 29,
-        ),
-    );
+    # Field attributes.
+    my $attributes = $self->default_attributes;
+    delete $attributes->{ truncator };
 
-    while (my ($attribute, $value) = each %default_attributes) {
-	my $setter = "set_$attribute";
-	my $getter = "get_$attribute";
-        can_ok $field, $setter;
-        $field->$setter( $value );
-        eq_or_diff $field->$getter(), $value,
-            "setter for '$attribute' should be correct";
+    while ( my ($alignment, $method) = each %alignment_method ) {
+        $attributes->{ alignment } = $alignment;
+        my $field = $self->_create_field( $attributes );
+
+        my $want = TCO::String::Truncator->new(
+            method => $method,
+            length => $attributes->{ width },
+        );
+        eq_or_diff $field->get_truncator, $want,
+            "'$alignment' aligned field should be truncated at the '$method' by default";
     }
+}
+
+sub type : Tests {
+    my $self = shift;
+    my $field = $self->default_field;
+
+    is $field->get_type, 'data',
+        "correct type should be set implicitly";
+}
+
+sub width : Tests {
+    my $self = shift;
+    my $field = $self->default_field;
+
+    # Non-positive width.
+    throws_ok { $field->set_width( 0 ) }
+        qr/does not pass the type constraint/,
+        "trying to set a non-positive 'width' should fail";
+    
+    # Positive width.
+    lives_ok { $field->set_width( 1 ) }
+        "trying to set a positive 'width' should succeed";
 }
 
 sub as_string : Tests {
     my $self = shift;
     my $class = $self->class_to_test;
-    my $field;
-    my $string;
+    my ( $field, $string );
+    
+    # Field attributes.
+    my $attributes = $self->default_attributes;
+    delete $attributes->{ truncator };
+    $attributes->{ width } = 19;
 
-    #
     # Padding.
-    #
     $string = 'Shiny!';
 
-    # Left.
-    $field = $class->new(
-        width     => 19,
-        alignment => 'left',
+    my %alignment_result = (
+        left   => 'Shiny!             ',
+        right  => '             Shiny!',
+        centre => '      Shiny!       ',
     );
-    is $field->as_string( $string ), 'Shiny!             ',
-        'left aligned data should be padded correctly';
 
-    # Right.
-    $field = $class->new(
-        width     => 19,
-        alignment => 'right',
-    );
-    is $field->as_string( $string ), '             Shiny!',
-        'right aligned data should be padded correctly';
+    while ( my ($alignment, $result) = each %alignment_result ) {
+        $attributes->{ alignment } = $alignment;
+        my $field = $self->_create_field( $attributes );
 
-    # Centre.
-    $field = $class->new(
-        width     => 19,
-        alignment => 'centre',
-    );
-    is $field->as_string( $string ), '      Shiny!       ',
-        'centred data should be padded correctly';
+        is $field->as_string( $string ), $result,
+            "'$alignment' aligned data should be padded correctly";
+    }
 
-    #
     # Truncating.
-    #
     $string = "Did you see the chandelier? It's hovering.";
     
-    # Left.
-    $field = $self->class_to_test->new(
-        width     => 19,
-        alignment => 'left',
+    %alignment_result = (
+        left   => 'Did you see the ...',
+        right  => "...? It's hovering.",
+        centre => 'Did you see the ...',
     );
-    is $field->as_string( $string ), 'Did you see the ...',
-        'left aligned data should be truncated correctly';
     
-    # Right.
-    $field = $self->class_to_test->new(
-        width     => 19,
-        alignment => 'right',
-    );
-    is $field->as_string($string), "...? It's hovering.",
-        'right aligned data should be truncated correctly';
+    while ( my ($alignment, $result) = each %alignment_result ) {
+        $attributes->{ alignment } = $alignment;
+        my $field = $self->_create_field( $attributes );
 
-    # Centre.
-    $field = $self->class_to_test->new(
-        width     => 19,
-        alignment => 'centre',
-    );
-    is $field->as_string($string), 'Did you see the ...',
-        'centred data should be truncated correctly';
+        is $field->as_string( $string ), $result,
+            "'$alignment' aligned data should be truncated correctly";
+    }
 }
 
 1;

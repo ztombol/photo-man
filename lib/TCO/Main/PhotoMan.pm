@@ -280,21 +280,21 @@ sub op_move_and_rename {
     if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
     else                                    { $args_ref = {@_};  }
 
-    my $manager       = $args_ref->{ manager };
-    my $image         = $args_ref->{ image };
-    my $location_temp = $args_ref->{ move };
-    my $filename_temp = $args_ref->{ rename };
-    my $use_libmagic  = $args_ref->{ magic };
+    my $manager        = $args_ref->{ manager };
+    my $image          = $args_ref->{ image };
+    my $location_temp  = $args_ref->{ move };
+    my $file_name_temp = $args_ref->{ rename };
+    my $use_magic      = $args_ref->{ magic };
 
     # Perform action.
     # FIXME: this is a work around of getting results in dry-run, will be
     #        removed after Image::File implements journaling support
     my ($status, $new_path) = $manager->move_and_rename(
     #my $status = $manager->move_and_rename(
-        image         => $image,
-        location_temp => $location_temp,
-        filename_temp => $filename_temp,
-        use_libmagic  => $use_libmagic,
+        image          => $image,
+        location_temp  => $location_temp,
+        file_name_temp => $file_name_temp,
+        use_magic      => $use_magic,
     );
     #my $new_path = $image->get_path;
 

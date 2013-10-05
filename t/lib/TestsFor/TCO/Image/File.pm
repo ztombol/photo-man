@@ -24,7 +24,7 @@ package TestsFor::TCO::Image::File;
 
 use Test::Class::Most
     parent      =>'TestsFor',
-    attributes  => [qw( default_file temp_dir )];
+    attributes  => [qw( test_files temp_dir )];
 
 use Carp;
 use File::Temp;
@@ -51,14 +51,7 @@ sub setup : Tests(setup) {
     $self->next::method;
 
     # Create sandbox. Temporary directory with a test file.
-    $self->create_sandbox();
-    
-    # Instantiate default file object.
-    $self->default_file(
-        $class->new(
-            path => File::Spec->catfile( $self->temp_dir, 'src', 'test.jpg'),
-        )
-    );
+    $self->_create_sandbox();
 }
 
 sub teardown : Tests(teardown) {
@@ -81,30 +74,50 @@ sub shutdown : Tests(shutdown) {
 
 # Creates a temporary directory with test files in it. The temporary directory
 # will be automatically deleted when the test finishes, unless you want it to
-# be preserved for debugging purposes (see below).
-sub create_sandbox {
+# be preserved for debugging purposes (see the NOTE below).
+sub _create_sandbox {
     my $self = shift;
-
-    # TODO: there has to be an easier way of locating test resources.
-    # Parent of temporary directory and location of test resources,
-    # respectively.
-    my $tmp = '/tmp';
-    my $res = (File::Spec->splitpath(__FILE__))[1];
+    my $tmp = '/tmp';   # Parent of the temp directory.
+    my $res = 't/res';  # Directory containing the test files.
 
     # Create directory structure.
-    $self->temp_dir( File::Temp->newdir(
-        template => "$tmp/pm-tests-XXXXXXXX",
-        # Uncomment this line to preserve the temporary directory after the
-        # tests finish. Useful for debugging.
-        #CLEANUP => 0
-    ));
+    $self->temp_dir(
+        File::Temp->newdir(
+            template => "$tmp/pm-tests-XXXXXXXX",
+            # NOTE: Uncomment the line below to preserve the temporary directory
+            #       after the tests finish. Useful for debugging.
+            #CLEANUP => 0
+        )
+    );
+
     my $src = File::Spec->catdir( $self->temp_dir, 'src' );
     make_path( $src );
 
-    # Copy source file.
-    if ( ! copy (File::Spec->catfile($res, 'test.jpg'), $src) ) {
-        croak "Error: while copying test file: $!";
+    # Copy test files to temp directory.
+    my %src_dst = (
+        # source file    # list of destinations
+        'test.jpg'    => [ $src ],
+        'test2.jpg'   => [ $src ],
+        'no_meta.jpg' => [ $src ],
+    );
+
+    while ( my ($file, $list) = each( %src_dst ) ) {
+        foreach my $dest ( @{$list} ) {
+            if ( ! copy (File::Spec->catfile( $res, $file ), $dest) ) {
+                croak "Error: while copying test file: $file -> $dest: $!";
+            }
+        }
     }
+    
+    # Instantiate test file object.
+    $self->test_files([
+        TCO::Image::File->new(
+            path => File::Spec->catfile( $src, 'test.jpg' ) ),
+        TCO::Image::File->new(
+            path => File::Spec->catfile( $src, 'test2.jpg') ),
+        TCO::Image::File->new(
+            path => File::Spec->catfile( $src, 'no_meta.jpg') ),
+    ]);
 }
 
 sub constructor : Tests {
@@ -115,76 +128,110 @@ sub constructor : Tests {
     throws_ok { $class->new }
         qr/Attribute.*required/,
         "Creating a $class without proper attributes should fail";
-    isa_ok $self->default_file, $class;
+    isa_ok $self->test_files->[0], $class;
 }
 
-sub attributes : Tests {
+sub path : Tests {
     my $self = shift;
-    my $file = $self->default_file;
-
-    #
-    # Attributes with non-parametrised accessors.
-    #
-    my %default_attributes = (
-        basename  => [ 'test.jpg' ],
-        filename  => [ 'test'     ],
-        dir       => [ File::Spec->catfile( $self->temp_dir, 'src/' ) ],
-    );
+    my $file  = $self->test_files->[0];
+    my $file2 = $self->test_files->[1];
     
-    while (my ($attribute, $res_and_params) = each %default_attributes) {
-        my $method = "get_$attribute";
-        my $result = shift @{$res_and_params};
-        can_ok $file, $method;
-        is $file->$method(@{$res_and_params}), $result,
-            "The value for '$attribute' should be correct;"
-    }
+    can_ok $file, '_set_path';
+    
+    my $old_fs_meta = $file->get_fs_meta;
+    my $old_img_meta = $file->get_img_meta;
 
-    #
-    # Attributes with parametrised accessors.
-    #
+    # Setter.
+    lives_ok { $file->_set_path( $file2->get_path ) }
+        "'set_path' should succeed";
 
-    # extension
+    # Updated metadata after moving.
+    $self->_metadata_updated( $file, $old_fs_meta, $old_img_meta, 'setting path');
+}
+
+sub get_basename : Tests {
+    my $self = shift;
+    my $file = $self->test_files->[0];
+
+    can_ok $file, 'get_basename';
+    is $file->get_basename, 'test.jpg',
+        "filename with extension should be returned correctly";
+}
+
+sub get_filename : Tests {
+    my $self = shift;
+    my $file = $self->test_files->[0];
+
+    can_ok $file, 'get_filename';
+    is $file->get_filename, 'test',
+        "filename without extension should be returned correctly";
+}
+
+sub get_extension : Tests {
+    my $self = shift;
+    my $file = $self->test_files->[0];
+
     can_ok $file, 'get_extension';
+    is $file->get_extension, 'jpg',
+        "extension should be extracted from basename by default";
     is $file->get_extension( 0 ), 'jpg',
-        "'extension' should be correctly determined using the filename";
+        "extension should be correctly extracted from the basename";
     is $file->get_extension( 1 ), 'jpeg',
-        "'extension' should be correctly determined using the magic number";
-    is $file->get_extension(), 'jpg',
-        "'extension' by default should be extract from the filename";
+        "extension should be correctly determined from the magic number";
+}
 
-    # extension
+sub get_dir : Tests {
+    my $self = shift;
+    my $file = $self->test_files->[0];
+
+    can_ok $file, 'get_dir';
+    is $file->get_dir, File::Spec->catdir( $self->temp_dir, 'src' ),
+        "directory portion of the path should be returned correctly";
+}
+
+sub get_timestamp : Tests {
+    my $self = shift;
+    my $file = $self->test_files->[0];
+
     can_ok $file, 'get_timestamp';
     is $file->get_timestamp( 'CreateDate' )
         ->set_time_zone('Europe/Budapest'),
         '2013-03-19T16:07:53',
-        "'timestamp' should not have a time zone set by default";
+        "a timestamp should have 'floating' time zone set by default";
     is $file->get_timestamp( 'CreateDate', 'Asia/Tokyo' )
         ->set_time_zone('Europe/Budapest'),
         '2013-03-19T08:07:53',
-        "'timestamp' should have its time zone correctly set when one is specfied";
+        "a timestamp should have its time zone correctly set when one is specfied";
 }
 
 sub move_file : Tests {
     my $self = shift;
-    my $file = $self->default_file;
+    my $file = $self->test_files->[0];
+    my $new_path;
+
+    can_ok $file, 'move_file';
+    
+    # Moving file to non-existent directory.
+    $new_path = File::Spec->catfile( $self->temp_dir, 'src', 'moved.jpg' );
+    ok ! $file->move_file($new_path) && -e $new_path,
+        "file should be moved correctly to an existing directory";
+
+    my $old_fs_meta = $file->get_fs_meta;
+    my $old_img_meta = $file->get_img_meta;
 
     # Moving file to non-existent directory.
-    my $new_name = 'moved.jpeg';
-    my $new_path = File::Spec->catfile(
-        ( $self->temp_dir, 'dest' ),
-        $new_name,
-    );
+    $new_path = File::Spec->catfile( $self->temp_dir, 'dest', 'moved.jpg' );
     ok ! $file->move_file($new_path) && -e $new_path,
-        'file should be moved correctly';
-
-    # Updated metadata after moving.
-    is $file->get_img_meta->{'FileName'}, $new_name,
-        'metadata should be reloaded after moving';
+        "file should be moved correctly to a non-existing folder";
+    
+    $self->_metadata_updated( $file, $old_fs_meta, $old_img_meta, 'setting timestamp');
 }
 
 sub set_mod_time : Tests {
     my $self = shift;
-    my $file = $self->default_file;
+    my $file = $self->test_files->[0];
+
+    can_ok $file, 'set_mod_time';
 
     # New time stamp.
     my $new_mtime = DateTime->new(
@@ -204,13 +251,28 @@ sub set_mod_time : Tests {
     (my $dt_orig = $new_mtime) =~ s/(\d\d)\Z/:$1/;
     $new_mtime->set_time_zone( 'local' );
     (my $dt_local = $new_mtime) =~ s/(\d\d)\Z/:$1/;
+    
+    my $old_fs_meta = $file->get_fs_meta;
+    my $old_img_meta = $file->get_img_meta;
 
     # Set new time stamp.
     is $file->set_mod_time( $dt_orig ), 0,
-        'changing file system timestamp should complete without errors';
+        'changing file system timestamp should succeed';
+    is $file->get_img_meta->{ FileModifyDate }, $dt_local,
+        'timestamp should be converted into local time zone';
+    
+    $self->_metadata_updated( $file, $old_fs_meta, $old_img_meta, 'setting timestamp');
+}
 
-    is $file->get_img_meta->{'FileModifyDate'}, $dt_local,
-        'timestamp should be correctly adjusted to local time zone';
+sub _metadata_updated {
+    my $self = shift;
+    my ($file, $old_fs_meta, $old_img_meta, $op) = @_;
+
+    # Updated metadata after moving.
+    isnt $file->get_fs_meta, $old_fs_meta,
+        "fs metadata should be reloaded after " . $op;
+    isnt $file->get_img_meta, $old_img_meta,
+        "image metadata should be reloaded after " . $op;
 }
 
 1;

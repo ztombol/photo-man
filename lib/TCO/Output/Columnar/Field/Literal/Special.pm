@@ -28,7 +28,6 @@ use Moose;
 use MooseX::StrictConstructor;
 use MooseX::FollowPBP;
 use namespace::autoclean;
-use Carp;
 
 extends 'TCO::Output::Columnar::Field::Literal';
 

@@ -10,6 +10,17 @@ tasks, such as:
 
 For all features, see the manual by issuing `$ photo-man --man`.
 
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+***WARNING!*** *photo-man is under heavy development and may contain bugs.
+However, I do my best to keep them at bay. I maintain an extensive test suite
+(with 200+ tests) and even use the latest release on my own photo library
+without a hitch.*
+***Please remember to always backup your files and verify the result of
+operations!***
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 # Examples
 
 You arrived home from your month-long vacation in Japan a week ago and it's
@@ -28,8 +39,8 @@ which day they were taken, while also renaming them to ensure related photos
 end up next to each other in correct order.
 
 ```sh
-$ photo-man --move   'vacation/\%y.\%m'             \
-            --rename 'img-\%y\%m\%d-\%h\%m\%s'      \
+$ photo-man --move   'vacation/%Y.%m'             \
+            --rename 'img-%Y%m%d-%H%M%S'          \
             /mnt/camera/* /mnt/phone/* /mnt/glass/*
 ```
 

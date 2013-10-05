@@ -23,19 +23,8 @@
 package TestsFor::TCO::Main::PhotoMan;
 
 use Test::Class::Most
-    parent      =>'TestsFor',
-    attributes  => [qw( default_files temp_dir )];
+    parent      =>'TestsFor';
 use Test::Trap;
-
-use TCO::Image::File;
-
-use Carp;
-use File::Temp;
-use File::Path qw( make_path );
-use File::Copy;
-use File::Compare;
-use DateTime;
-use DateTime::Format::Strptime;
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -54,17 +43,7 @@ sub setup : Tests(setup) {
     # First call the parent method.
     $self->next::method;
 
-    # Create sandbox. Temporary directory with a test file.
-    $self->create_sandbox();
-    
-    # Instantiate default file object.
-    my $src_path = File::Spec->catfile( $self->temp_dir, 'src' );
-    $self->default_files([
-        TCO::Image::File->new(
-            path => File::Spec->catfile( $src_path, 'test.jpg' ) ),
-        TCO::Image::File->new(
-            path => File::Spec->catfile( $src_path, 'test2.jpg' ) ),
-    ]);
+    # Setup code goes here...
 }
 
 sub teardown : Tests(teardown) {
@@ -83,48 +62,6 @@ sub shutdown : Tests(shutdown) {
 
     # Finally, call parent method.
     $self->next::method;
-}
-
-# Creates a temporary directory with test files in it. The temporary directory
-# will be automatically deleted when the test finishes, unless you want it to
-# be preserved for debugging purposes (see below).
-sub create_sandbox {
-    my $self = shift;
-
-    # TODO: there has to be an easier way of locating test resources.
-    # Parent of temporary directory and location of test resources,
-    # respectively.
-    my $tmp = '/tmp';
-    my $res = File::Spec->catfile(
-        (File::Spec->splitpath(__FILE__))[1],
-        '..',
-        'Image',
-    );
-
-    # Create directory structure.
-    $self->temp_dir( File::Temp->newdir(
-        template => "$tmp/pm-tests-XXXXXXXX",
-        # Uncomment this line to preserve the temporary directory after the
-        # tests finish. Useful for debugging.
-        #CLEANUP => 0,
-    ));
-    my $src      = File::Spec->catdir( $self->temp_dir, 'src' );
-    my $src_copy = File::Spec->catdir( $self->temp_dir, 'src_copy' );
-    make_path( $src, $src_copy );
-
-    # Copy source files.
-    my %src_dst = (
-        # Source       # Destinations
-        'test.jpg'  => [ $src, $src_copy ],
-        'test2.jpg' => [ $src, $src_copy ],
-    );
-    while ( my ($file, $list) = each(%src_dst) ) {
-        foreach my $dest ( @{$list} ) {
-            if ( ! copy (File::Spec->catfile($res, $file), $dest) ) {
-                croak "Error: while copying test file: $file -> $dest: $!";
-            }
-        }
-    }
 }
 
 sub parse_options : Tests {
@@ -211,10 +148,8 @@ sub out_move_and_rename : Tests {
     my $self = shift;
     my $class = $self->class_to_test;
     my @tests;
-
-    #
-    # Compact (NON-verbose) output
-    #
+    
+    diag "Compat (non-verbose) output";
 
     # Initialise output formatters.
     $self->init_test_output( 0 );
@@ -224,23 +159,23 @@ sub out_move_and_rename : Tests {
         {
             in  => [ 0, 'new/path/img.jpeg' ],
             out => [ "move\nnew/path/img.jpeg\n",
-                     "(compact) output should be correct when moving file" ],
+                     "output should be correct when moving file" ],
         }, {
             in  => [ 1, 'new/path/img.jpeg' ],
             out => [ "over\nnew/path/img.jpeg\n",
-                     "(compact) output should be correct when overwriting file" ],
+                     "output should be correct when overwriting file" ],
         }, {
             in  => [ 2, 'new/path/img.jpeg' ],
             out => [ "same\nnew/path/img.jpeg\n",
-                     "(compact) output should be correct when a copy of the same file is present at the destination" ],
+                     "output should be correct when a copy of the same file is present at the destination" ],
         }, {
             in  => [ 3, 'new/path/img.jpeg' ],
             out => [ "there\nnew/path/img.jpeg\n",
-                     "(compact) output should be correct when file is aready at destination" ],
+                     "output should be correct when file is aready at destination" ],
         }, {
             in  => [-2, undef ],
             out => [ "error!\nmissing timestamp\n",
-                     "(compact) output should be correct when DateTimeDigitized is missing from metadata" ],
+                     "output should be correct when DateTimeDigitized is missing from metadata" ],
         }
     );
     foreach my $test ( @tests) {
@@ -250,13 +185,11 @@ sub out_move_and_rename : Tests {
     
     # Error moving file.
     trap { $class->out_move_and_rename( -1, undef ) };
-    $trap->did_die( "(compact) upon error the subroutine should die" );
-    $trap->die_like( qr/MOVE:.*error/, "(compact) upon error an error message should be displayed" );
+    $trap->did_die( "upon error the subroutine should die" );
+    $trap->die_like( qr/MOVE:.*error/, "upon error an error message should be displayed" );
     
 
-    #
-    # Verbose output
-    #
+    diag "Verbose output";
 
     # Initialise output formatters.
     $self->init_test_output( 1 );
@@ -266,23 +199,23 @@ sub out_move_and_rename : Tests {
         {
             in  => [ 0, 'new/path/img.jpeg' ],
             out => [ "move\nmoved\nnew/path/img.jpeg\n",
-                     "(verbose) output should be correct when moving file" ],
+                     "output should be correct when moving file" ],
         }, {
             in  => [ 1, 'new/path/img.jpeg' ],
             out => [ "move\noverwritten\nnew/path/img.jpeg\n",
-                     "(verbose) output should be correct when overwriting file" ],
+                     "output should be correct when overwriting file" ],
         }, {
             in  => [ 2, 'new/path/img.jpeg' ],
             out => [ "move\nsame file at\nnew/path/img.jpeg\n",
-                     "(verbose) output should be correct when a copy of the same file is present at the destination" ],
+                     "output should be correct when a copy of the same file is present at the destination" ],
         }, {
             in  => [ 3, 'new/path/img.jpeg' ],
             out => [ "move\nalready at\n\n",
-                     "(verbose) output should be correct when file is aready at destination" ],
+                     "output should be correct when file is aready at destination" ],
         }, {
             in  => [-2 ],
             out => [ "move\nerror!\nmissing timestamp\n",
-                     "(verbose) output should be correct when DateTimeDigitized is missing from metadata" ],
+                     "output should be correct when DateTimeDigitized is missing from metadata" ],
         }
     );
     foreach my $test ( @tests) {
@@ -292,8 +225,8 @@ sub out_move_and_rename : Tests {
     
     # Error moving file.
     trap { $class->out_move_and_rename( -1, undef ) };
-    $trap->did_die( "(verbose) upon error the subroutine should die" );
-    $trap->die_like( qr/MOVE:.*error/, "(verbose) upon error an error message should be displayed" );
+    $trap->did_die( "upon error the subroutine should die" );
+    $trap->die_like( qr/MOVE:.*error/, "upon error an error message should be displayed" );
 }
 
 sub out_fix_timestamp : Tests {
@@ -305,9 +238,7 @@ sub out_fix_timestamp : Tests {
         hour   => 15,   minute => 53, second => 21,
     );
 
-    #
-    # Compact (NON-verbose) output
-    #
+    diag "Compat (non-verbose) output";
 
     # Initialise output formatters.
     $self->init_test_output( 0 );
@@ -317,15 +248,15 @@ sub out_fix_timestamp : Tests {
         {
             in  => [ 0, $new_time ],
             out => [ "2013:09:14 15:53:21\n",
-                     "(compact) output should be correct when timestamp is updated successfully" ],
+                     "output should be correct when timestamp is updated successfully" ],
         }, {
             in  => [ 1 ],
             out => [ "--\n",
-                     "(compact) output should be correct when timestamp is correct" ],
+                     "output should be correct when timestamp is correct" ],
         }, {
             in  => [-2 ],
             out => [ "!!! missing !!!\n",
-                     "(compact) output should be correct when DateTimeDigitized is missing from metadata" ],
+                     "output should be correct when DateTimeDigitized is missing from metadata" ],
         }
     );
     foreach my $test ( @tests) {
@@ -335,13 +266,11 @@ sub out_fix_timestamp : Tests {
 
     # Error moving file.
     trap { $class->out_fix_timestamp( -1, undef ) };
-    $trap->did_die( "(compact) upon error the subroutine should die" );
-    $trap->die_like( qr/TOUCH:.*error/, "(compact) upon error an error message should be displayed" );
+    $trap->did_die( "upon error the subroutine should die" );
+    $trap->die_like( qr/TOUCH:.*error/, "upon error an error message should be displayed" );
 
 
-    #
-    # Verbose output
-    #
+    diag "Verbose output";
 
     # Initialise output formatters.
     $self->init_test_output( 1 );
@@ -351,15 +280,15 @@ sub out_fix_timestamp : Tests {
         {
             in  => [ 0, $new_time ],
             out => [ "time\nchanged\n2013:09:14 15:53:21\n",
-                     "(verbose) output should be correct when timestamp is updated successfully" ],
+                     "output should be correct when timestamp is updated successfully" ],
         }, {
             in  => [ 1 ],
             out => [ "time\ncorrect\n\n",
-                     "(verbose) output should be correct when timestamp is correct" ],
+                     "output should be correct when timestamp is correct" ],
         }, {
             in  => [-2 ],
             out => [ "time\nerror!\nmissing timestamp\n",
-                     "(compact) output should be correct when DateTimeDigitized is missing from metadata" ],
+                     "output should be correct when DateTimeDigitized is missing from metadata" ],
         }
     );
     foreach my $test ( @tests) {
@@ -369,8 +298,8 @@ sub out_fix_timestamp : Tests {
 
     # Error moving file.
     trap { $class->out_fix_timestamp( -1, undef ) };
-    $trap->did_die( "(verbose) upon error the subroutine should die" );
-    $trap->die_like( qr/TOUCH:.*error/, "(verbose) upon error an error message should be displayed" );
+    $trap->did_die( "upon error the subroutine should die" );
+    $trap->die_like( qr/TOUCH:.*error/, "upon error an error message should be displayed" );
 }
 
 1;

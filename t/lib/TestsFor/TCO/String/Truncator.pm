@@ -24,7 +24,7 @@ package TestsFor::TCO::String::Truncator;
 
 use Test::Class::Most
     parent      =>'TestsFor',
-    attributes  => [qw(default_truncator)];
+    attributes  => [qw(default_truncator default_attributes)];
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -43,13 +43,9 @@ sub setup : Tests(setup) {
     # First call the parent method.
     $self->next::method;
 
-    # Instantiate default field object.
-    $self->default_truncator(
-        $class->new(
-            method => 'end',
-            length => 10,
-        )
-    );
+    # Set default attributes and default field object.
+    $self->default_attributes( $self->_default_attributes );
+    $self->default_truncator( $self->_create_truncator( $self->default_attributes ) );
 }
 
 sub teardown : Tests(teardown) {
@@ -70,6 +66,24 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
+# Instantiates a new truncator.
+sub _create_truncator {
+    my $self  = shift;
+    my $class = $self->class_to_test;
+
+    return $class->new(
+        $self->default_attributes,
+    );
+}
+
+# Attributes of the default object.
+sub _default_attributes {
+    return {
+        method => 'end',
+        length => 10,
+    };
+}
+
 sub constructor : Tests {
     my $self  = shift;
     my $class = $self->class_to_test;
@@ -81,120 +95,102 @@ sub constructor : Tests {
     isa_ok $self->default_truncator, $class;
 }
 
-sub attributes : Tests {
+sub method : Tests {
     my $self = shift;
-    my $field = $self->default_truncator;
-    my %default_attributes;
+    my $class = $self->class_to_test;
 
-    # Getters.
-    %default_attributes = (
-        length    => '10',
-    );
-
-    while (my ($attribute, $value) = each %default_attributes) {
-        my $getter = "get_$attribute";
-        can_ok $field, $getter;
-        eq_or_diff $field->$getter(), $value,
-            "getter for '$attribute' should be correct";
+    # Valid methods.
+    foreach ( qw/beginning end/ ) {
+        $self->default_attributes->{ method } = $_;
+        lives_ok { $class->new( $self->default_attributes ) }
+            "trying to create a truncator with '$_' method should succeed";
     }
+
+    # Invalid alignment.
+    $self->default_attributes->{ method } = 'invalid';
+    throws_ok { $class->new( $self->default_attributes ) }
+        qr/does not pass the type constraint/,
+        "trying to create a truncator with an invalid alignment should fail";
+}
+
+sub length : Tests {
+    my $self = shift;
+    my $truncator = $self->default_truncator;
+
+    # Non-positive width.
+    throws_ok { $truncator->set_length( 0 ) }
+        qr/does not pass the type constraint/,
+        "trying to set a non-positive 'length' should fail";
     
-	# Setters.
-    %default_attributes = (
-        length    => '20',
-    );
+    # Positive width.
+    lives_ok { $truncator->set_length( 1 ) }
+        "trying to set a positive 'length' should succeed";
+}
 
-    while (my ($attribute, $value) = each %default_attributes) {
-		my $setter = "set_$attribute";
-		my $getter = "get_$attribute";
-        can_ok $field, $setter;
-        $field->$setter( $value );
-        eq_or_diff $field->$getter(), $value,
-            "setter for '$attribute' should be correct";
-    }
+sub delimiter : Tests {
+    my $self = shift;
+    my $truncator = $self->default_truncator;
+
+    is $truncator->_get_delimiter, '',
+        "delimiter should be set to the empty string by default";
+}
+
+sub ellipsis : Tests {
+    my $self = shift;
+    my $truncator = $self->default_truncator;
+
+    is $truncator->_get_ellipsis, '...',
+        "ellipsis should be set to '...' by default";
 }
 
 sub truncate : Tests {
     my $self = shift;
-
-    # Test different truncation methods.
-    $self->truncate_at_beginning;
-    $self->truncate_at_end;
-}
-
-# Removing excess at the beginning.
-sub truncate_at_beginning {
-    my $self  = shift;
     my $class = $self->class_to_test;
+    my $string = 'The quick brown fox jumps over the lazy dog.';
+    my $truncator;
+    
+    # No truncation.
+    $truncator = $class->new(
+        method    => 'beginning',
+        length    => CORE::length( $string ),
+    );
+    is $truncator->truncate( $string ), $string,
+        "short enough string should be left untouched";
 
-    # Test strings with one and multi-character delimiters.
-    my $one_char_delim = 'The quick brown fox jumps over the lazy dog.';
-    my $four_char_delim = 'pear----apple----cabbage----tomato----banana';
-    my $trunc;
+    # Beginning.
+    $truncator = $class->new(
+        method    => 'beginning',
+        length    => '24',
+        delimiter => ' ',
+    );
+    is $truncator->truncate( $string ), '...over the lazy dog.',
+        "truncating at the beginning should be done correctly";
 
-    # Default.
-    $trunc = $class->new({
+    # End.
+    $truncator = $class->new(
+        method    => 'end',
+        length    => '20',
+        delimiter => ' ',
+    );
+    is $truncator->truncate( $string ), 'The quick brown...',
+        "truncating at the end should be done correctly";
+
+    # Empty string delimiter.
+    $truncator = $class->new(
         method => 'beginning',
         length => '20',
-    });
-    is $trunc->truncate($one_char_delim), '...ver the lazy dog.',
-        'beginning: truncation should be correct with default delimiter and ellipsis';
+    );
+    is $truncator->truncate( $string ), '...ver the lazy dog.',
+        "the empty string delimiter should cut anywhere, even in the middle of a 'word'";
 
-    # Delimiter.
-    $trunc = $class->new({
-        method    => 'beginning',
-        length    => length $one_char_delim,
-    });
-    is $trunc->truncate($one_char_delim), $one_char_delim,
-        'beginning: truncation should not happen when target is short enough';
-
-    # Delimiter longer than ellipsis.
-    $trunc = $class->new({
-        method    => 'beginning',
-        length    => '18',
-        ellipsis  => '..',
-        delimiter => '----',
-    });
-    is $trunc->truncate($four_char_delim), '..tomato----banana',
-        'beginning: truncation should be correct when the delimiter is longer'
-      . ' than ellipsis';
-}
-
-# Removing excess at the end.
-sub truncate_at_end {
-    my $self  = shift;
-    my $class = $self->class_to_test;
-
-    # Test strings with one and multi-character delimiters.
-    my $one_char_delim = 'The quick brown fox jumps over the lazy dog.';
-    my $four_char_delim = 'pear----apple----cabbage----tomato----banana';
-    my $trunc;
-
-    # Default.
-    $trunc = $class->new({
-        method => 'end',
-        length => '20',
-    });
-    is $trunc->truncate($one_char_delim), 'The quick brown f...',
-        'end: truncation should be correct with default delimiter and ellipsis';
-
-    # Delimiter.
-    $trunc = $class->new({
-        method    => 'end',
-        length    => length $one_char_delim,
-    });
-    is $trunc->truncate($one_char_delim), $one_char_delim,
-        'end: truncation should not happen when target is short enough';
-
-    # Delimiter longer than ellipsis.
-    $trunc = $class->new({
-        method    => 'end',
-        length    => '18',
-        ellipsis  => '..',
-        delimiter => '----',
-    });
-    is $trunc->truncate($four_char_delim), 'pear----apple..',
-        'end: truncation should be correct when the delimiter is longer than '
-      . 'ellipsis';
+    # Custom ellipsis.
+    $truncator = $class->new(
+        method   => 'beginning',
+        length   => '21',
+        ellipsis => '..',
+    );
+    is $truncator->truncate( $string ), '.. over the lazy dog.',
+        "truncation should be correct with custom ellipsis";
 }
 
 1;

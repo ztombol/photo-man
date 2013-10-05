@@ -24,13 +24,8 @@ package TestsFor::TCO::Output::Columnar::Field;
 
 use Test::Class::Most
     parent      =>'TestsFor',
-    attributes  => [qw(default_field)],
+    attributes  => [qw/default_field default_attributes/],
     is_abstract => 1;
-
-sub is_abstract {
-    my $self = shift;
-    return Test::Class::Most->is_abstract($self);
-}
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -48,9 +43,10 @@ sub setup : Tests(setup) {
     
     # First call the parent method.
     $self->next::method;
-
-    # Instantiate default field object.
-    $self->default_field( $self->create_default_field );
+    
+    # Set default attributes and default field object.
+    $self->default_attributes( $self->_default_attributes );
+    $self->default_field( $self->_create_field( $self->default_attributes ) );
 }
 
 sub teardown : Tests(teardown) {
@@ -71,37 +67,42 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
-# Instantiates default field object.
-sub create_default_field {
-    my $self  = shift;
+# Instantiates a new field.
+sub _create_field {
+    my $self = shift;
+    my $attributes = shift;
     my $class = $self->class_to_test;
 
-    return $class->new(
+    return $class->new( $attributes );
+}
+
+# Attributes of the default object.
+sub _default_attributes {
+    return {
         type => 'test',
-    );
+    };
 }
 
 sub constructor : Tests {
     my $self  = shift;
     my $class = $self->class_to_test;
 
-    return if $self->is_abstract;
+    # Run these tests only for subclasses.
+    #return if $self->is_abstract;
 
     can_ok $class, 'new';
     throws_ok { $class->new }
         qr/Attribute.*required/,
         "Creating a $class without proper attributes should fail";
-    isa_ok $self->default_field, $class;
+    lives_and { isa_ok $self->default_field, $class };
 }
 
-sub attributes : Tests {
+sub type : Tests {
     my $self = shift;
     my $field = $self->default_field;
 
-    # Getters.
-    can_ok $field, "get_type";
-    eq_or_diff $field->get_type(), 'test',
-        "The value for 'get_type' should be correct";
+    is $field->get_type, 'test',
+        "correct type should be set implicitly";
 }
 
 1;

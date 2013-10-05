@@ -54,21 +54,91 @@ has 'forced' => (
     reader  => 'is_forced',
 );
 
+# Sets the file system modification timestamp to the EXIF digitised timestamp
+# that is correctly offset by the time difference between the original (where
+# the photo was taken) and the local timezone (where the file system lives).
+#
+# @param [in] image     whose timestamp will be modified
+# @param [in] timezone  where the photo was taken
+#
+# @returns -2 timestamp missing
+#          -1 error modifying file system timestamp
+#           0 timestamp successfully changed
+#           1 timestamp already correct
+sub fix_timestamp {
+    my $self = shift;
+    my $args_ref;
+    my $status;
+
+    # Accept parameters in a hash or a hashref.
+    if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
+    else                                    { $args_ref = {@_};  }
+
+    my $image     = $args_ref->{image};
+    my $time_zone = $args_ref->{timezone};
+
+    # Cache local timezone (retrival can be expensive).
+    my $local_tz = DateTime::TimeZone->new( name => 'local' );
+
+    # TODO: Should we move this into a separate method on Image::File?
+    # File system timestamp.
+    my $fs_mtime = DateTime->from_epoch(
+        epoch     => $image->get_fs_meta->mtime,
+        time_zone => $local_tz,
+    );
+
+    # EXIF creation timestamp.
+    my $img_mtime = $image->get_timestamp('CreateDate', $time_zone);
+    if ( ! defined $img_mtime ) {
+        # EXIF DateTimeDigitized is not present in metadata (or could not be
+        # parsed, which is less likely to happen though).
+        $status = -2;
+    }
+    else {
+        # Convert embedded timestamp to local time zone.
+        $img_mtime->set_time_zone( $local_tz );
+
+        if (   $img_mtime->truncate(to => 'second')
+            != $fs_mtime->truncate( to => 'second') ) {
+
+            # Needs to be fixed.
+            if ( $self->do_commit ) {
+                $status = $image->set_mod_time($img_mtime);
+            }
+            else {
+                $status = 0;
+            }
+        }
+        else {
+            # Timestamp correct.
+            $status = 1;
+        }
+    }
+
+    # Already correct.
+    # FIXME: this is a work around until we implement journaling on file
+    #        operations
+    return ($status, $img_mtime);
+    #return $status;
+}
+
+
 # Moves the image to a new location and/or renames it. The new location and
-# filename is specified with templates that lets the user to combine string
-# literals and parts of the creation timestamp from the metadata of the image.
+# file name is specified with templates that lets the user to combine string
+# literals and parts of the DateTimeDigitized timestamp from the EXIF metadata
+# of the image.
 #
 # NOTE: As a side-effect, this function also updates the `path' in the image
-# object and thus reloads metadata.
+#       object and thus reloads metadata.
 #
-# @param [in] image          to move and/or rename
-# @param [in] location_temp  template used to produce the new location for
-#			     moving
-# @param [in] filename_temp  template used to produce the new filename for
-#                            renaming
+# @param [in] image           to move and/or rename
+# @param [in] location_temp   template used to produce the new location for
+#                             moving
+# @param [in] file_name_temp  template used to produce the new filename for
+#                             renaming
 #
-# returns  -2, timestamp missing
-#          -1, in case of errors
+# @returns -2, timestamp missing
+#          -1, error while moving
 #           0, successful moving/renaming
 #           1, file at the destination overwritten
 #           2, another file already exists with the same path
@@ -82,10 +152,10 @@ sub move_and_rename {
     if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
     else                                    { $args_ref = {@_};  }
 
-    my $image         = $args_ref->{image};
-    my $location_temp = $args_ref->{location_temp};
-    my $filename_temp = $args_ref->{filename_temp};
-    my $use_libmagic  = $args_ref->{use_libmagic};
+    my $image          = $args_ref->{image};
+    my $location_temp  = $args_ref->{location_temp};
+    my $file_name_temp = $args_ref->{file_name_temp};
+    my $use_magic      = $args_ref->{use_magic};
 
     # New path of the file.
     my $new_file;
@@ -93,20 +163,29 @@ sub move_and_rename {
     # Retrieve timestamp for interpolation.
     my $timestamp = $image->get_timestamp('CreateDate');
     if ( ! defined $timestamp ) {
-        # EXIF DateTimeDigitized is not present in metadata.
+        # EXIF DateTimeDigitized is not present in metadata (or could not be
+        # parsed, which is less likely to happen though).
         $status = -2;
     }
     else {
         # Assemble new path.
-        $new_file = $self->_make_path( $image, $location_temp, $filename_temp, $timestamp, $use_libmagic);
+        $new_file = $self->_make_path(
+            image          => $image,
+            timestamp      => $timestamp,
+            location_temp  => $location_temp,
+            file_name_temp => $file_name_temp,
+            use_magic      => $use_magic,
+        );
 
         # Attempt to move the file.
         if ( ! -e $new_file ) {
             # Target file does not exists. Move the file!
             if ( $self->do_commit ) {
-                $image->move_file( $new_file );
+                $status = $image->move_file( $new_file ) ? -1 : 0;
             }
-            $status = 0;
+            else {
+                $status = 0;
+            }
         }
         elsif ( $image->get_path eq $new_file ) {
             # Source and Target are the same. Nothing to do!
@@ -119,10 +198,12 @@ sub move_and_rename {
                # Target is different from Source. Can we overwrite?
                if ( $self->is_forced ) {
                    # Overwrite file.
-                   if ( $self->do_commit ) {
-                       $image->move_file( $new_file );
+                    if ( $self->do_commit ) {
+                        $status = $image->move_file( $new_file ) ? -1 : 1;
                     }
-                    $status = 1;
+                    else {
+                        $status = 1;
+                    }
                 }
                 else {
                     # Do not overwrite file.
@@ -143,125 +224,78 @@ sub move_and_rename {
     #return $status;
 }
 
-# Creates a path based on location (for directory) and filename templates (for
-# the actual filename portion). The path is created by interpolating the
-# template with parts of the DateTimeDigitized timestamp stored in the image's
-# metadata.
-# The templates are optional. If a template is not supplied, the original value
-# will be used. For example, a template is specified for location but not for
-# filename then the new path will consist of the new location and the original
-# filename.
-# The original extension (portion of filename after the last dot) will be used,
-# unless the last parameter is true. In which case LibMagic is used to
-# determine the extension.
+# Creates a path string by replacing parts of the location (directory) and
+# file name (without extension) templates with the referenced parts of the
+# supplied date and time.
 #
-# @param [in] $1  image to create path for
-# @param [in] $2  location template (optional)
-# @param [in] $3  filename template (optional)
-# @param [in] $4  0: use substring after the last dot, or
-#                 1: use LibMagic to determine extension
+# Both templates are optional. In place of a not specified template the
+# original value, directory or filename, will be used. For example, to rename a
+# file, specify only a filename template. That will make the directory resolve
+# to the file's current directory and cause the file to be renamed to the name
+# to file name template interpolates to.
 #
-# returns the produced path
+# The extension in the new file name can be determined using the basename by
+# extracting the substring after the last dot in the basename (default), or by
+# exemining the file's embedded magic number.
+#
+# @param [in] self            manager object
+# @param [in] image           image whose path will be assembled
+# @param [in] timestamp       date and time to use for template interpolation
+# @param [in] location_temp   location template (optional)
+# @param [in] file_name_temp  file name temaplate (optional)
+# @param [in] use_magic       determine extension using (optional)
+#                             0, substring after last dot (default)
+#                             1, magic number
+#
+# @returns the assembled path
 sub _make_path {
     my $self = shift;
+    my $args_ref;
 
-    my $image         = shift;
-    my $location_temp = shift;
-    my $filename_temp = shift;
-    my $timestamp     = shift;
-    my $use_libmagic  = shift;
-   
+    # Accept attributes in a hash or a hashref.
+    if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
+    else                                    { $args_ref = {@_};  }
+
+    my $image          = $args_ref->{image};
+    my $timestamp      = $args_ref->{timestamp};
+    my $location_temp  = $args_ref->{location_temp};
+    my $file_name_temp = $args_ref->{file_name_temp};
+    my $use_magic      = $args_ref->{use_magic};
+
     # Parent directory. 
     my $new_location = ( defined $location_temp && $location_temp ne '' )
-      ? $self->_template_to_str( $location_temp, $timestamp )
+      ? $self->_expand_template( $location_temp, $timestamp )
       : $image->get_dir;
 
-    # Filename including extension.
-    my $new_filename = (( defined $filename_temp && $filename_temp ne '' )
-      ? $self->_template_to_str( $filename_temp, $timestamp )
-      : $image->get_filename )
-        . '.' . $image->get_extension( $use_libmagic );
+    # File name without extension.
+    my $new_filename = ( defined $file_name_temp && $file_name_temp ne '' )
+      ? $self->_expand_template( $file_name_temp, $timestamp )
+      : $image->get_filename;
 
-    return File::Spec->catfile( $new_location, $new_filename );
+    # Extension.
+    my $new_extension = $image->get_extension( $use_magic );
+
+    return File::Spec->catfile(
+        $new_location, $new_filename . '.' . $new_extension
+    );
 }
 
-# Constructs string from a template by interpolating it using the creation
-# timestamp from metadata stored in the image.
+# Expands a template by replacing special character sequences with parts of the
+# specified timestamp. Non-special characters are threated as literals and left
+# as is.
 #
-# @param [in] image     to extract metadata from
-# @param [in] template  string to interpolate
+# @param [in] self       manager object
+# @param [in] timestamp  whose parts will be substituted
+# @param [in] template   string to expand
 #
-# returns produced string
-sub _template_to_str {
+# @returns expanded string
+sub _expand_template {
     my $self = shift;
     my $template = shift;
     my $timestamp = shift;
 
     # Return interpolated string.
     return $timestamp->strftime( $template );
-}
-
-# Sets the file system modification timestamp to the EXIF *digitised* timestamp
-# that is correctly offset by the time difference between the original (where the photo was
-# taken) and the local timezone (where the file system lives).
-#
-# @param [in] image     whose timestamp will be modified
-# @param [in] timezone  where the photo was taken
-#
-# returns  -2 timestamp missing
-#          -1 error modifying file system timestamp
-#           0 timestamp successfully changed
-#           1 timestamp already correct
-sub fix_timestamp {
-    my $self = shift;
-    my $args_ref;
-    my $status;
-
-    # Accept parameters in a hash or a hashref.
-    if ( @_ == 1 && (ref $_[0] eq 'HASH') ) { $args_ref = shift; }
-    else                                    { $args_ref = {@_};  }
-
-    my $image     = $args_ref->{image};
-    my $time_zone = $args_ref->{timezone};
-
-    # Cache local timezone (retrival can be expensive).
-    my $local_tz = DateTime::TimeZone->new( name => 'local' );
-
-    # TODO: Move this into a separate method on Image::File.
-    # File system timestamp.
-    my $fs_mtime = DateTime->from_epoch(
-        epoch     => $image->get_fs_meta->mtime,
-        time_zone => $local_tz,
-    );
-    
-    # EXIF creation timestamp.
-    my $img_mtime = $image->get_timestamp('CreateDate', $time_zone);
-    if ( ! defined $img_mtime ) {
-        # EXIF DateTimeDigitized is not present in metadata.
-        $status = -2;
-    }
-    else {
-        # Convert embedded timestamp to local time zone.
-        $img_mtime->set_time_zone( $local_tz );
-
-        if (   $img_mtime->truncate(to => 'second')
-            != $fs_mtime->truncate( to => 'second') ) {
-
-            # Needs to be fixed.
-           	if ( $self->do_commit ) { $status = $image->set_mod_time($img_mtime) }
-            else                    { $status = 0; }
-        }
-        else {
-            # Timestamp correct.
-            $status = 1;
-        }
-    }
-
-    # Already correct.
-    # FIXME: this is a work around until we implement journaling on file
-    #        operations
-    return ($status, $img_mtime);
-    #return $status;
 }
 
 __PACKAGE__->meta->make_immutable;

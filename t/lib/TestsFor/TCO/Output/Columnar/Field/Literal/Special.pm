@@ -23,7 +23,7 @@
 package TestsFor::TCO::Output::Columnar::Field::Literal::Special;
 
 use Test::Class::Most
-    parent      => 'TestsFor::TCO::Output::Columnar::Field::Literal';
+    parent => 'TestsFor::TCO::Output::Columnar::Field::Literal';
 
 sub startup : Tests(startup) {
     my $self  = shift;
@@ -63,44 +63,27 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
-# Instantiates default field object.
-sub create_default_field {
-    my $self  = shift;
-    my $class = $self->class_to_test;
-
-    return $class->new(
-        string => "\r",
-    );
+# Attributes of the default object.
+sub _default_attributes {
+    return {
+        string => "\r\n",
+    };
 }
 
-sub attributes : Tests {
+sub type : Tests {
     my $self = shift;
     my $field = $self->default_field;
-    my %default_attributes;
-    
-    # Getters.
-    %default_attributes = (
-        type   => 'special',
-        width  => 0,
-    );
 
-    while (my ($attribute, $value) = each %default_attributes) {
-        my $getter = "get_$attribute";
-        can_ok $field, $getter;
-        eq_or_diff $field->$getter(), $value,
-            "getter for '$attribute' should be correct";
-    }
+    is $field->get_type, 'special',
+        "correct type should be set implicitly";
 }
 
-sub as_string : Tests {
+sub get_width : Tests {
     my $self = shift;
-    my $string = "\r";
+    my $field = $self->default_field;
 
-    my $field = $self->class_to_test->new({
-        string => $string,
-    });
-    is $field->as_string(), $string,
-        'field should render the string correctly';
+    is $field->get_width, 0,
+        "a special field should be considered a zero length string";
 }
 
 1;

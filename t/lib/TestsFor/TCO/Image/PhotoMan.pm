@@ -24,7 +24,7 @@ package TestsFor::TCO::Image::PhotoMan;
 
 use Test::Class::Most
     parent      =>'TestsFor',
-    attributes  => [qw( default_manager default_files temp_dir )];
+    attributes  => [qw( default_manager test_files temp_dir )];
 
 use TCO::Image::File;
 
@@ -53,9 +53,6 @@ sub setup : Tests(setup) {
     # First call the parent method.
     $self->next::method;
 
-    # Create sandbox. Temporary directory with a test file.
-    $self->create_sandbox();
-    
     # Instantiate default manager object.
     $self->default_manager(
         $class->new(
@@ -63,16 +60,8 @@ sub setup : Tests(setup) {
         )
     );
 
-    # Instantiate default file object.
-    my $src_path = File::Spec->catfile( $self->temp_dir, 'src' );
-    $self->default_files([
-        TCO::Image::File->new(
-            path => File::Spec->catfile( $src_path, 'test.jpg' ) ),
-        TCO::Image::File->new(
-            path => File::Spec->catfile( $src_path, 'test2.jpg') ),
-        TCO::Image::File->new(
-            path => File::Spec->catfile( $src_path, 'no_meta.jpg') ),
-    ]);
+    # Create sandbox. Temporary directory with a test file.
+    $self->_create_sandbox();
 }
 
 sub teardown : Tests(teardown) {
@@ -93,39 +82,53 @@ sub shutdown : Tests(shutdown) {
     $self->next::method;
 }
 
-# Creates a temporary directory with a test file in it. The temporary directory
-# will be automatically deleted when the test finishes.
-sub create_sandbox {
+# Creates a temporary directory with test files in it. The temporary directory
+# will be automatically deleted when the test finishes, unless you want it to
+# be preserved for debugging purposes (see the NOTE below).
+sub _create_sandbox {
     my $self = shift;
-
-    # Parent of temporary directory and location of test resources,
-    # respecively.
-    my $tmp = '/tmp';
-    my $res = (File::Spec->splitpath(__FILE__))[1];
+    my $tmp = '/tmp';   # Parent of the temp directory.
+    my $res = 't/res';  # Directory containing the test files.
 
     # Create directory structure.
-    $self->temp_dir( File::Temp->newdir(
-        template => "$tmp/pm-tests-XXXXXXXX",
-	#CLEANUP => 0,
-    ));
+    $self->temp_dir(
+        File::Temp->newdir(
+            template => "$tmp/pm-tests-XXXXXXXX",
+            # NOTE: Uncomment the line below to preserve the temporary directory
+            #       after the tests finish. Useful for debugging.
+            #CLEANUP => 0
+        )
+    );
+
     my $src      = File::Spec->catdir( $self->temp_dir, 'src' );
     my $src_copy = File::Spec->catdir( $self->temp_dir, 'src_copy' );
     make_path( $src, $src_copy );
 
-    # Copy source files.
+    # Copy test files to temp directory.
     my %src_dst = (
-        # source         # destinations
+        # source file    # list of destinations
         'test.jpg'    => [ $src, $src_copy ],
         'test2.jpg'   => [ $src, $src_copy ],
         'no_meta.jpg' => [ $src ],
     );
-    while ( my ($file, $list) = each(%src_dst) ) {
+
+    while ( my ($file, $list) = each( %src_dst ) ) {
         foreach my $dest ( @{$list} ) {
-            if ( ! copy (File::Spec->catfile($res, $file), $dest) ) {
+            if ( ! copy (File::Spec->catfile( $res, $file ), $dest) ) {
                 croak "Error: while copying test file: $file -> $dest: $!";
             }
         }
     }
+    
+    # Instantiate test file object.
+    $self->test_files([
+        TCO::Image::File->new(
+            path => File::Spec->catfile( $src, 'test.jpg' ) ),
+        TCO::Image::File->new(
+            path => File::Spec->catfile( $src, 'test2.jpg') ),
+        TCO::Image::File->new(
+            path => File::Spec->catfile( $src, 'no_meta.jpg') ),
+    ]);
 }
 
 sub constructor : Tests {
@@ -138,383 +141,670 @@ sub constructor : Tests {
     isa_ok $self->default_manager, $class;
 }
 
-sub no_metadata : Tests {
-    my $self = shift;
-    my $file = $self->default_files->[2];
-    my $man = $self->default_manager;
+# The timestamp correction subroutine's behaviour is affected by only the
+# commit mode. The desired outcome is shown in the matrix below.
+#
+#      commit     no      yes
+# ------------------------------
+#         fix  - / 0,t  u / 0,t
+#  up-to-date  - / 1,t  - / 1,t
+#     missing  - /-2,u  - /-2,u
+#       error           - /-1,j
+#
+# The outcome is specified as:
+#     action / returned list of values
+#
+# Where actions:
+#     - no action taken
+#     u timestamp updated
+#
+# and return values:
+#     t timestamp
+#     u undef
+#     j junk, unreliable data
+#
 
-    # Set new timestamp.
-    # TODO: remove the index after journaling is finished.
-    is( ($man->fix_timestamp(
-            timezone => 'Asia/Tokyo',
-            image    => $file,
-        ))[0], -2,
-        'when DateTimeDigitized is missing, fixing file system modification timestamp should fail');
+# Correct timestamp in COMMIT mode.
+sub fix_timestamp_c : Tests {
+    my $self = shift;
+    my $man = $self->default_manager;
+    my ($file, @result);
+
+    diag 'Using COMMIT mode manager';
+
+    can_ok $man, 'fix_timestamp';
+
+    # Success.
+    $file = $self->test_files->[0];
+    @result = $man->fix_timestamp(
+        timezone => 'Asia/Tokyo',
+        image    => $file,
+    );
+    $result[1] = '' . $result[1];   # Stringify timestamp.
+    eq_or_diff \@result, [ 0, '2013-03-19T08:07:53' ],
+        "setting new timestamp should return 0 and the new timestamp";
+
+    $self->_timestamp_uptodate( $man );
+    $self->_timestamp_error( $man );
+    $self->_timestamp_missing( $man );
+}
+
+# Correct timestamp in NON-COMMIT mode.
+sub fix_timestamp_nc : Tests {
+    my $self = shift;
+    my $man = $self->class_to_test->new( commit => 0 );
+    my $file;
+    my @result;
+
+    diag 'Using NON-COMMIT mode manager';
+
+    can_ok $man, 'fix_timestamp';
+
+    # Success.
+    $file = $self->test_files->[0];
+    @result = $man->fix_timestamp(
+        timezone => 'Asia/Tokyo',
+        image    => $file,
+    );
+    $result[1] = '' . $result[1];   # Stringify timestamp.
+    eq_or_diff \@result, [ 0, '2013-03-19T08:07:53' ],
+        "setting new timestamp should return 0 and the new timestamp";
+
+    # Fix timestamp before the test.
+    $self->default_manager->fix_timestamp(
+        timezone => 'Asia/Tokyo',
+        image    => $file,
+    ); 
+    $self->_timestamp_uptodate( $man );
+
+    # NOTE: We do not test for error here. In NON-COMMIT mode error can only
+    #       happen if parsing the EXIF timestamp fails.
+
+    $self->_timestamp_missing( $man );
+}
+
+# Timestamp correct.
+#
+# NOTE: Call after timestamp has been fixed on test_files->[0].
+sub _timestamp_uptodate {
+    my $self = shift;
+    my $man = shift;
+    my ($file, @result);
     
-    # Move and rename.
-    is( ($man->move_and_rename(
-            image         => $file,
-            location_temp => File::Spec->catfile( $self->temp_dir, 'dest/%Y.%m' ),
-            filename_temp => 'img-%Y%m%d-%H%M%S',
-            use_libmagic  => 1,
-        ))[0], -2,
-        'when DateTimeDigitised is missing, moving and renaming should fail');
+    $file = $self->test_files->[0];
+    @result = $man->fix_timestamp(
+        timezone => 'Asia/Tokyo',
+        image    => $file,
+    ); 
+    $result[1] = '' . $result[1];   # Stringify timestamp.
+    eq_or_diff \@result, [ 1, '2013-03-19T08:07:53' ],
+        "attempting to set the same timestamp should return 1 and the current timestamp";
+
 }
 
-
-# Test the timestamp setting subroutine. The file system timestamp should be
-# changed only when the manager is in commit mode (forced mode does not affect
-# this function). After a successful setting the metadata should be updated in
-# the file onbject.
-sub fix_timestamp : Tests {
+# Timestamp missing.
+#
+# NOTE: The same error happens when the timestamp is present but we failed to
+#       parse it correctly. This case is less likely to happen and would hint
+#       at problems in ExifTool. So we do not currently handle this situation.
+sub _timestamp_missing {
     my $self = shift;
-    my $file = $self->default_files->[0];
-    my $man = $self->default_manager;
-
-    # Set new timestamp.
-    # TODO: remove the index after journaling is finished.
-    is( ($man->fix_timestamp(
-            timezone => 'Asia/Tokyo',
-            image    => $file,
-        ))[0], 0,
-        'fixing file system modification timestamp should succeed');
-
-    # Test if time stamp was correctly set.
-    # TODO: remove the index after journaling is finished.
-    is( ($man->fix_timestamp(
-            timezone => 'Asia/Tokyo',
-            image    => $file,
-        ))[0], 1,
-        'file system modification timestamp should be up-to-date');
+    my $man = shift;
+    my ($file, @result);
+    
+    $file = $self->test_files->[2];
+    @result = $man->fix_timestamp(
+        timezone => 'Asia/Tokyo',
+        image    => $file,
+    ); 
+    eq_or_diff \@result, [ -2, undef ],
+        "attempting to correct file system timestamp when image timestamp is missing should return -2 and undef";
 }
 
-# Test the moving and renaming subroutine. The matrix below shows what the
-# desired outcomes are in different manager configurations.
+# Error setting timestamp.
+sub _timestamp_error {
+    my $self = shift;
+    my $man = shift;
+    my ($file, @result);
+
+    # Error.
+    $file = $self->test_files->[1];
+    move( $file->get_path, $file->get_path . ".bak" );  # Rename the file to cause an error.
+    @result = $man->fix_timestamp(
+        timezone => 'Asia/Tokyo',
+        image    => $file,
+    ); 
+    is $result[0], -1,
+        "in case of error -1 should be returned (the second value is unreliable)";
+}
+
+# The move and rename subroutine's behaviour is affected by both the commit and
+# the forced mode. The desired outcome is shown in the matrix below.
 #
+#       commit        no             yes              no             yes
+#       forced        no              no             yes             yes
+# ----------------------------------------------------------------------------
+#         move  - / 0,p / e:n   m / 0,p / n:e   - / 0,p / e:n   m / 0,p / n:e
+#       rename  - / 0,p / e:n   m / 0,p / n:e   - / 0,p / e:n   m / 0,p / n:e
+#  move+rename  - / 0,p / e:n   m / 0,p / n:e   - / 0,p / e:n   m / 0,p / n:e
+#   src = dest  - / 3,p / e:-   - / 3,p / e:-   - / 3,p / e:-   - / 3,p / e:-
+#    same file  - / 2,p / e:e   - / 2,p / e:e   - / 2,p / e:e   - / 2,p / e:e
+#    diff file  - / 2,p / e:e   - / 2,p / e:e   - / 1,p / e:e   o / 1,p / n:e
+#        error  - / 0,p / -:n   - /-1,p / -:-   - / 0,p / -:n   - /-1,p / -:-
+#      missing  - /-2,u / e:-   - /-2,u / e:-   - /-2,u / e:-   - /-2,u / e:-
 #
-#        commit   no  yes   no  yes
-#        forced   no   no  yes  yes
-# ----------------------------------
-#          move   -/0  m/0  -/0  m/0
-#        rename   -/0  m/0  -/0  m/0
-# move & rename   -/0  m/0  -/0  m/0
-#   src_eq_dest   -/3  -/3  -/3  -/3
-#     same file   -/2  -/2  -/2  -/2
-#     diff file   -/2  -/2  -/1  o/1
+# The outcome is specified as:
+#     action / returned list of values / source status:destination status
 #
-# Where the the symbol before the slash is the action performed and the one
-# after is the value returned by the subroutine. The action symbols' meaning is
-# the following:
+# Where actions:
+#     - no action taken
+#     m file moved
+#     o destination overwritten
 #
-#  - - no action taken, only status code returned
-#  m - file moved and status returned
-#  o - file overwritten and status returned
+# return values:
+#     p new path
+#     u undef
+#     j junk, unreliable data
 #
-#
-# The following four subroutines test the above listed cases. Each function is
-# named accordint to the configuration of the manager used.
-#
-#   c  - commit
-#   f  - forced
-#   nc - no commit
-#   nf - not forced
+# and file statuses:
+#     - not tested
+#     e exists
+#     n does not exist
 #
 
+# Move and rename in NON-COMMIT and NON-FORCED mode.
 sub move_and_rename_nc_nf : Tests {
-    my $self  = shift;
-    my $man   = $self->class_to_test->new( commit => 0, forced => 0 );
-    my ($op, $src_path, $dst_path);
+    my $self = shift;
+    my $man = $self->class_to_test->new( commit => 0, forced => 0 );
 
-    diag 'Manager configuration: NON-commit, NON-forced';
+    diag 'Using NON-COMMIT and NON-FORCED mode manager';
     
-    $self->test_move_and_rename_nc( $man );
-    $self->test_overwrite_itself( $man );
-    $self->test_overwrite_nf( $man );
-
+    $self->_test_move_and_rename_nc( $man );
+    $self->_test_diff_file_nf( $man );
+    $self->_test_error_nc( $man );
+    $self->_test_common( $man );
 }
 
-sub move_and_rename_c_nf : Tests {
-    my $self  = shift;
-    my $man   = $self->class_to_test->new( commit => 1, forced => 0 );
-    my ($op, $src_path, $dst_path);
-    
-    diag 'Manager configuration: commit, NON-forced';
-
-    $self->test_move_and_rename_c( $man );
-    $self->test_overwrite_itself( $man );
-    $self->test_overwrite_nf( $man );
-}
-
+# Move and rename in NON-COMMIT and FORCED mode.
 sub move_and_rename_nc_f : Tests {
-    my $self  = shift;
-    my $man   = $self->class_to_test->new( commit => 0, forced => 1 );
-    my ($op, $src_path, $dst_path);
+    my $self = shift;
+    my $man = $self->class_to_test->new( commit => 0, forced => 1 );
 
-    diag 'Manager configuration: NON-commit, forced';
+    diag 'Using NON-COMMIT and FORCED mode manager';
     
-    $self->test_move_and_rename_nc( $man );
-    $self->test_overwrite_itself( $man );
-
-    # Same file already at destination.
-    ($op, $src_path, $dst_path) = $self->same_file_there( $man );
-    ok $op == 2 && -e $src_path && -e $dst_path,
-        'Attempting to overwrite the same file at the destintaion should only '
-      . 'return the correct status';
-
-    # Different file already at destination.
-    ($op, $src_path, $dst_path) = $self->diff_file_there( $man );
-    ok $op == 1 && -e $src_path && -e $dst_path,
-        'Overwriting a different file at the destination should only return '
-      . 'the correct status';
+    $self->_test_move_and_rename_nc( $man );
+    $self->_test_diff_file_nc_f( $man );
+    $self->_test_error_nc( $man );
+    $self->_test_common( $man );
 }
 
+# Move and rename in COMMIT and NON-FORCED mode.
+sub move_and_rename_c_nf : Tests {
+    my $self = shift;
+    my $man = $self->class_to_test->new( commit => 1, forced => 0 );
+
+    diag 'Using COMMIT and NON-FORCED mode manager';
+    
+    $self->_test_move_and_rename_c( $man );
+    $self->_test_diff_file_nf( $man );
+    $self->_test_error_c( $man );
+    $self->_test_common( $man );
+}
+
+# Move and rename in COMMIT and FORCED mode.
 sub move_and_rename_c_f : Tests {
-    my $self  = shift;
-    my $man   = $self->class_to_test->new( commit => 1, forced => 1 );
-    my ($op, $src_path, $dst_path);
+    my $self = shift;
+    my $man = $self->class_to_test->new( commit => 1, forced => 1 );
+
+    diag 'Using COMMIT and FORCED mode manager';
     
-    diag 'Manager configuration: commit, forced';
-   
-    $self->test_move_and_rename_c( $man );
-    $self->test_overwrite_itself( $man );
-
-    # Same file already at destination.
-    ($op, $src_path, $dst_path) = $self->same_file_there( $man );
-    ok $op == 2 && -e $src_path && -e $dst_path,
-        'Attempting to overwrite the same file at the destintaion should only '
-      . 'return the correct status';
-
-    # Different file already at destination.
-    ($op, $src_path, $dst_path) = $self->diff_file_there( $man );
-    ok $op == 1 && ! -e $src_path && -e $dst_path,
-        'Overwriting a different file at the destination should return the '
-      . 'correct status';
+    $self->_test_move_and_rename_c( $man );
+    $self->_test_diff_file_c_f( $man );
+    $self->_test_error_c( $man );
+    $self->_test_common( $man );
 }
 
-# Move and rename related tests are extracted out into two subroutines bellow,
-# as the test are identical for managers with the same commit mode regardless
-# of their forced mode flag (i.e. a commit & *non-forced* mode manager requires
-# the same tests as a commit & *forced* one).
+#
+# Test groups.
+#
 
-# Runs:
+# NON-COMMIT mode:
 #   - move only
 #   - rename only
 #   - move and rename
 #
-# tests for *non-commit* mode managers.
-#
-# @param [in] $man  manager to test
-sub test_move_and_rename_nc {
-    my ($self, $man) = @_;
+# @param [in] self  test class
+# @param [in] man   manager to test
+sub _test_move_and_rename_nc {
+    my $self = shift;
+    my $man = shift;
     my ($op, $src_path, $dst_path);
 
-    # Needs commit mode manager.
-    croak 'Needs non-commit mode manager' unless ( ! $man->do_commit );
+    croak 'Needs NON-COMMIT mode manager' unless ( ! $man->do_commit );
 
-    # Move: src/test.jpg => temp/2013.03/test.jpg
-    ($op, $src_path, $dst_path) = $self->move_only( $man );
-    ok $op == 0 && -e $src_path && ! -e $dst_path,
-        'Moving should only return the correct status';
+    # Move [0]
+    ($op, $src_path, $dst_path) = $self->_test_move_only( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 0,   $self->temp_dir . '/moved/2013.03/test.jpg' ],
+        "successful moving should return 0 and the new path";
+    ok -e $src_path && ! -e $dst_path,
+        "... and the file should not be moved";
 
-    # Rename: temp/2013.03/test.jpg => temp/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->rename_only( $man );
-    ok $op == 0 && -e $src_path && ! -e $dst_path,
-        'Renaming should only return the correct status';
-    
-    # Move and Rename: temp/2013.03/img-20130319-160753.jpeg => dest/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->move_and_rename( $man );
-    ok $op == 0 && -e $src_path && ! -e $dst_path,
-        'Moving and renaming should only return the correct status';
+    # Rename [0]
+    ($op, $src_path, $dst_path) = $self->_test_rename_only( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 0,   $self->temp_dir . '/src/renamed-20130319-160753.jpeg' ],
+        "successful renaming should return 0 and the new path";
+    ok -e $src_path && ! -e $dst_path,
+        "... and the file should not be renamed";
+
+    # Move and Rename [0]
+    ($op, $src_path, $dst_path) = $self->_test_move_and_rename( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 0,   $self->temp_dir . '/dest/2013.03/img-20130319-160753.jpeg' ],
+        "successful moving and renaming should return 0 and the new path";
+    ok -e $src_path && ! -e $dst_path,
+        "... and the file should not be renamed";
 }
 
-# Runs:
+# COMMIT mode:
 #   - move only
 #   - rename only
 #   - move and rename
 #
-# tests for *commit* mode managers.
-#
-# @param [in] $man  manager to test
-sub test_move_and_rename_c {
-    my ($self, $man) = @_;
-    my ($op, $src_path, $dst_path);
-    
-    # Needs commit mode manager.
-    croak 'Needs commit mode manager' unless ( $man->do_commit );
-
-    # Move: src/test.jpg => temp/2013.03/test.jpg
-    ($op, $src_path, $dst_path) = $self->move_only( $man );
-    ok $op == 0 && ! -e $src_path && -e $dst_path,
-        'Moving only should preserve original filename and return the correct '
-      . 'status';
-
-    # Rename: temp/2013.03/test.jpg => temp/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->rename_only( $man );
-    ok $op == 0 && ! -e $src_path && -e $dst_path,
-        'Renaming only should leave file at the same location and return the '
-      . 'correct status';
-    
-    # Move and Rename: temp/2013.03/img-20130319-160753.jpeg => dest/2013.03/img-20130319-160753.jpeg
-    ($op, $src_path, $dst_path) = $self->move_and_rename( $man );
-    ok $op == 0 && ! -e $src_path && -e $dst_path,
-        'Moving and renaming should work together and returnt the correct '
-      . 'status';
-}
-
-# Runs overwrite test where the overwriting of the input file with itself is
-# attempted. Applies to all manager configurations.
-#
-# @param [in] $man  manager to test
-sub test_overwrite_itself {
-    my ($self, $man) = @_;
+# @param [in] self  test class
+# @param [in] man   manager to test
+sub _test_move_and_rename_c {
+    my $self = shift;
+    my $man = shift;
     my ($op, $src_path, $dst_path);
 
-    # Source and destination path is the same.
-    ($op, $src_path, $dst_path) = $self->src_eq_dest( $man );
-    ok $op == 3 && -e $src_path && -e $dst_path,
-        'Attempting to overwrite a file with itself should only return the '
-      . 'correct status';
+    croak 'Needs COMMIT mode manager' unless ( $man->do_commit );
+
+    # Move [0]
+    ($op, $src_path, $dst_path) = $self->_test_move_only( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 0,   $self->temp_dir . '/moved/2013.03/test.jpg' ],
+        "successful moving should return 0 and the new path";
+    ok ! -e $src_path && -e $dst_path,
+        "...and the file should not be moved";
+
+    # Rename [0]
+    ($op, $src_path, $dst_path) = $self->_test_rename_only( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 0,   $self->temp_dir . '/moved/2013.03/renamed-20130319-160753.jpeg' ],
+        "successful renaming should return 0 and the new path";
+    ok ! -e $src_path && -e $dst_path,
+        "...and the file should not be renamed";
+
+    # Move and Rename [0]
+    ($op, $src_path, $dst_path) = $self->_test_move_and_rename( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 0,   $self->temp_dir . '/dest/2013.03/img-20130319-160753.jpeg' ],
+        "successful moving and renaming should return 0 and the new path";
+    ok ! -e $src_path && -e $dst_path,
+        "...and the file should not be renamed";
 }
 
-# Runs:
-#   - attempt to overwrite file with itself
-#   - the same file is already at the destination
+# NON-FORCED mode:
 #   - a different file is already at the destination
 #
-# tests for non-forced mode managers.
+# @param [in] self  test class
+# @param [in] man   manager to test
+sub _test_diff_file_nf {
+    my $self = shift;
+    my $man = shift;
+    my ($op, $src_path, $dst_path);
+
+    croak 'Needs NON-FORCED mode manager' unless ( ! $man->is_forced );
+
+    # Move [1]
+    ($op, $src_path, $dst_path) = $self->_test_diff_file( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 2,   $self->temp_dir . '/src_copy/test.jpg' ],
+        "trying to move when another file exists at the destination should return 2 and the intended path";
+    ok -e $src_path && -e $dst_path,
+        "... and the file should not be overwritten";
+}
+
+# NON-COMMIT and FORCED mode:
+#   - a different file is already at the destination
 #
-# @param [in] $man  manager to test
-sub test_overwrite_nf {
-    my ($self, $man) = @_;
+# @param [in] self  test class
+# @param [in] man   manager to test
+sub _test_diff_file_nc_f {
+    my $self = shift;
+    my $man = shift;
+    my ($op, $src_path, $dst_path);
+
+    croak 'Needs NON-COMMIT and FORCED mode manager' unless ( ! $man->do_commit && $man->is_forced );
+
+    # Move [1]
+    ($op, $src_path, $dst_path) = $self->_test_diff_file( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 1,   $self->temp_dir . '/src_copy/test.jpg' ],
+        "successful overwriting of the destination should return 1 and the new path";
+    ok -e $src_path && -e $dst_path,
+        "... and both files should be left untouched";
+}
+
+# COMMIT and FORCED mode:
+#   - a different file is already at the destination
+#
+# @param [in] self  test class
+# @param [in] man   manager to test
+sub _test_diff_file_c_f {
+    my $self = shift;
+    my $man = shift;
+    my ($op, $src_path, $dst_path);
+
+    croak 'Needs COMMIT and FORCED mode manager' unless ( $man->do_commit && $man->is_forced );
+
+    # Move [1]
+    ($op, $src_path, $dst_path) = $self->_test_diff_file( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 1,   $self->temp_dir . '/src_copy/test.jpg' ],
+        "successful overwriting of the destination should return 1 and the new path";
+    ok ! -e $src_path && -e $dst_path,
+        "... and the file should overwrite the destination";
+}
+
+# NON-COMMIT modes:
+#   - error while moving
+#
+# @param [in] self  test class
+# @param [in] man   manager to test
+sub _test_error_nc {
+    my $self = shift;
+    my $man = shift;
     my ($op, $src_path, $dst_path);
     
-    # Needs non-forced mode manager.
-    croak 'Needs non-forced mode manager' unless ( ! $man->is_forced );
+    croak 'Needs NON-COMMIT mode manager' unless ( ! $man->do_commit );
     
-    # Same file already at destination.
-    ($op, $src_path, $dst_path) = $self->same_file_there( $man );
-    ok $op == 2 && -e $src_path && -e $dst_path && compare( $src_path, $dst_path ) == 0,
-        'Overwriting the same file at the destintaion should only return the '
-      . 'correct status';
-
-    # Different file already at destination.
-    ($op, $src_path, $dst_path) = $self->diff_file_there( $man );
-    ok $op == 2 && -e $src_path && -e $dst_path && compare( $src_path, $dst_path ) == 1,
-        'Overwriting a different file at the destination should only return '
-      . 'the correct status';
+    # Error moving [0]
+    ($op, $src_path, $dst_path) = $self->_test_error( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 0,   $self->temp_dir . '/error/2013.03/img-20130319-160753.jpg' ],
+        "moving is not performed so 0 and the new path should be returned";
+    # NOTE: We could/should test for the existence of the source. But currently
+    #       the error is caused by renaming the file without using the tested
+    #       interface.
+    ok ! -e $dst_path,
+        "... and nothing should be done";
 }
 
-# The operations of the six individual test cases are encapsulated into
-# separate subroutines below.
+# COMMIT modes:
+#   - error while moving
+#
+# @param [in] self  test class
+# @param [in] man   manager to test
+sub _test_error_c {
+    my $self = shift;
+    my $man = shift;
+    my ($op, $src_path, $dst_path);
+    
+    croak 'Needs COMMIT mode manager' unless ( $man->do_commit );
 
-# Move file[0] => temp/2013.03/test.jpg
-sub move_only {
-    my ($self, $man) = @_;
-    my $file = $self->default_files->[0];
+    # Error moving [0]
+    ($op, $src_path, $dst_path) = $self->_test_error( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ -1,  $self->temp_dir . '/error/2013.03/img-20130319-160753.jpeg' ],
+        "when an error occours in moving, -1 and the intended path should be returned";
+    # NOTE: We could/should test for the existence of the source. But currently
+    #       the error is caused by renaming the file without using the tested
+    #       interface.
+    ok ! -e $dst_path,
+        "... and nothing should be done";
+}
 
-    my $src_path = $file->get_path;
-    # TODO: workaround until journaling is implemented in File::Image.
-    #my $dst_path = File::Spec->catfile(
-    #    $self->temp_dir, 'temp/2013.03', $file->get_basename,
-    #);
-    #my $op = $man->move_and_rename(
+# ALL modes:
+#   - source and destination path are the same
+#   - the same file is already at the destination
+#   - timestamp missing
+#
+# @param [in] self  test class
+# @param [in] man   manager to test
+sub _test_common {
+    my $self = shift;
+    my $man = shift;
+    my ($op, $src_path, $dst_path);
+
+    # Source equals destination.
+    ($op, $src_path, $dst_path) = $self->_test_src_eq_dest( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 3,   $src_path ],
+        "trying to move to the current location should return 3 and the its current path";
+    ok -e $src_path,
+        "... and nothing should be done";
+    
+    # TODO: Should we change the behaviour here? Would it be more logical to
+    #       remove the source/overwrite the destination?
+    # A copy of the file is already at the destination.
+    ($op, $src_path, $dst_path) = $self->_test_same_file( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 2,   $self->temp_dir . '/src_copy/test2.jpg' ],
+        "trying to move when a copy of the file is already at the destination should return -2 and undef";
+    ok -e $src_path && -e $dst_path,
+        "... and nothing should be done";
+
+    # Timestamp missing.
+    ($op, $src_path, $dst_path) = $self->_test_missing( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ -2,  undef ],
+        "trying to move when the image timestamp is missing should return -2 and undef";
+    ok -e $src_path,
+        "... and nothing should be done";
+}
+
+#
+# Single tests.
+#
+
+# Move test_files->[0] => moved/2013.03/test.jpg
+sub _test_move_only {
+    my $self = shift;
+    my $man = shift;
+    my $image = $self->test_files->[0];
+
+    my $src_path = $image->get_path;
     my ($op, $dst_path) = $man->move_and_rename(
-        image         => $file,
-        location_temp => File::Spec->catfile( $self->temp_dir, 'temp/%Y.%m', ),
+        image          => $image,
+        location_temp  => File::Spec->catfile( $self->temp_dir, 'moved/%Y.%m', ),
     );
 
     return ($op, $src_path, $dst_path);
 }
 
-# Rename file[0] => img-20130319-160753.jpeg
-sub rename_only {
-    my ($self, $man) = @_;
-    my $file = $self->default_files->[0];
+# Rename test_files->[0] => renamed-20130319-160753.jpeg
+sub _test_rename_only {
+    my $self = shift;
+    my $man = shift;
+    my $image = $self->test_files->[0];
 
-    my $src_path = $file->get_path;
-    # TODO: workaround until journaling is implemented in File::Image.
-    #my $dst_path = File::Spec->catfile(
-    #    $file->get_dir, 'img-20130319-160753.jpeg',
-    #);
-    #my $op = $man->move_and_rename(
+    my $src_path = $image->get_path;
     my ($op, $dst_path) = $man->move_and_rename(
-        image         => $file,
-        filename_temp => 'img-%Y%m%d-%H%M%S',
-        use_libmagic  => 1,
+        image          => $image,
+        file_name_temp => 'renamed-%Y%m%d-%H%M%S',
+        use_magic      => 1,
     );
 
     return ($op, $src_path, $dst_path);
 }
 
-# Move & Rename file[0] => dest/2013.03/img-20130319-160753.jpeg
-sub move_and_rename {
-    my ($self, $man) = @_;
-    my $file = $self->default_files->[0];
+# Move & Rename test_files->[0] => dest/2013.03/img-20130319-160753.jpeg
+sub _test_move_and_rename {
+    my $self = shift;
+    my $man = shift;
+    my $image = $self->test_files->[0];
 
-    my $src_path = $file->get_path;
-    # TODO: workaround until journaling is implemented in File::Image.
-    #my $dst_path = File::Spec->catfile(
-    #    $self->temp_dir, 'dest/2013.03', 'img-20130319-160753.jpeg',
-    #);
-    #my $op = $man->move_and_rename(
+    my $src_path = $image->get_path;
     my ($op, $dst_path) = $man->move_and_rename(
-        image         => $file,
-        location_temp => File::Spec->catfile( $self->temp_dir, 'dest/%Y.%m' ),
-        filename_temp => 'img-%Y%m%d-%H%M%S',
-        use_libmagic  => 1,
+        image          => $image,
+        location_temp  => File::Spec->catfile( $self->temp_dir, 'dest/%Y.%m' ),
+        file_name_temp => 'img-%Y%m%d-%H%M%S',
+        use_magic      => 1,
     );
 
     return ($op, $src_path, $dst_path);
 }
 
-# Move file[1] => src/test2.jpg
-sub src_eq_dest {
-    my ($self, $man) = @_;
-    my $file = $self->default_files->[1];
+# Move test_files->[1] => test_files->[1]
+sub _test_src_eq_dest {
+    my $self = shift;
+    my $man = shift;
+    my $image = $self->test_files->[1];
 
-    my $src_path = $file->get_path;
-    my $dst_path = $file->get_path;
-    # TODO: remove the index after journaling is finished.
-    my $op = ($man->move_and_rename( image => $file ))[0];
+    my $src_path = $image->get_path;
+    my ($op, $dst_path) = $man->move_and_rename( image => $image );
 
     return ($op, $src_path, $dst_path);
 }
 
-# Move file[1] => src_copy/test2.jpg
-sub same_file_there {
-    my ($self, $man) = @_;
-    my $file = $self->default_files->[1];
+# Move test_files->[1] => src_copy/test2.jpg
+sub _test_same_file {
+    my $self = shift;
+    my $man = shift;
+    my $image = $self->test_files->[1];
 
-    my $src_path = $file->get_path;
-    my $dst_path = File::Spec->catfile(
-        $self->temp_dir, 'src_copy', $file->get_basename,
+    my $src_path = $image->get_path;
+    my ($op, $dst_path) = $man->move_and_rename(
+        image          => $image,
+        location_temp  => File::Spec->catfile( $self->temp_dir, 'src_copy'),
+        file_name_temp => 'test2',
     );
-    # TODO: remove the index after journaling is finished.
-    my $op = ($man->move_and_rename(
-        image         => $file,
-        location_temp => File::Spec->catfile( $self->temp_dir, 'src_copy'),
-    ))[0];
 
     return ($op, $src_path, $dst_path);
 }
 
 # Move and rename file[1] => src_copy/test.jpg
-sub diff_file_there {
-    my ($self, $man) = @_;
-    my $file = $self->default_files->[1];
+sub _test_diff_file {
+    my $self = shift;
+    my $man = shift;
+    my $image = $self->test_files->[1];
 
-    my $src_path = $file->get_path;
-    my $dst_path = File::Spec->catfile(
-        $self->temp_dir, 'src_copy', 'test.jpg',
+    my $src_path = $image->get_path;
+    my ($op, $dst_path) = $man->move_and_rename(
+        image          => $image,
+        file_name_temp => 'test',
+        location_temp  => File::Spec->catfile( $self->temp_dir, 'src_copy'),
     );
-    # TODO: remove the index after journaling is finished.
-    my $op = ($man->move_and_rename(
-        image         => $file,
-        filename_temp => 'test',
-        location_temp => File::Spec->catfile( $self->temp_dir, 'src_copy'),
-    ))[0];
 
     return ($op, $src_path, $dst_path);
+}
+
+# Missing timestamp: test_files->[2] => -
+sub _test_missing {
+    my $self = shift;
+    my $man = shift;
+    my $image = $self->test_files->[2];
+
+    my $src_path = $image->get_path;
+    my ($op, $dst_path) = $man->move_and_rename(
+        image          => $image,
+        location_temp  => File::Spec->catfile( $self->temp_dir, 'dest/%Y.%m' ),
+        file_name_temp => 'img-%Y%m%d-%H%M%S',
+        use_magic      => 1,
+    );
+
+    return ($op, $src_path, $dst_path);
+}
+
+# Error moving: test_files->[0] => error/2013.03/img-20130319-160753.jpeg
+sub _test_error {
+    my $self = shift;
+    my $man = shift;
+    my $image = $self->test_files->[0];
+
+    my $src_path = $image->get_path;
+    move( $image->get_path, $image->get_path . ".bak" );  # Rename the file to cause an error.
+    my ($op, $dst_path) = $man->move_and_rename(
+        image          => $image,
+        location_temp  => File::Spec->catfile( $self->temp_dir, 'error/%Y.%m' ),
+        file_name_temp => 'img-%Y%m%d-%H%M%S',
+        # FIXME: using libmagic on non-existent file croaks, catch it and
+        #        handle it nicely.
+        #use_magic      => 1,
+    );
+
+    return ($op, $src_path, $dst_path);
+}
+
+#
+# Other LOW-level subroutine tests.
+#
+
+# New path assembly and (indirectly) template expansion.
+sub _make_path : Tests {
+    my $self = shift;
+    my $man = $self->default_manager;
+    my $image = $self->test_files->[0];
+    my $timestamp = $image->get_timestamp( 'CreateDate' );
+    my $location_temp = '%Y/%m.%d';
+    my $file_name_temp = 'img-%Y%m%d-%H%M%S';
+    my $path;
+
+    # No templates. 
+    $path = $man->_make_path(
+        image          => $image,
+        timestamp      => $timestamp,
+        use_magic      => 0,
+    );
+    is $path, $image->get_path,
+        "current path should be returned when no temaplates are specified";
+
+    # Location template. 
+    $path = $man->_make_path(
+        image          => $image,
+        timestamp      => $timestamp,
+        location_temp  => $location_temp,
+        use_magic      => 0,
+    );
+    is $path, '2013/03.19/test.jpg',
+        "filename should be preserved when only location template is specified";
+
+    # File name template.
+    $path = $man->_make_path(
+        image          => $image,
+        timestamp      => $timestamp,
+        file_name_temp => $file_name_temp,
+        use_magic      => 0,
+    );
+    is $path, File::Spec->catfile( $image->get_dir, 'img-20130319-160753.jpg' ),
+        "directory should be preserved when only file name template is specified";
+
+    # Location and file name templates.
+    $path = $man->_make_path(
+        image          => $image,
+        timestamp      => $timestamp,
+        location_temp  => $location_temp,
+        file_name_temp => $file_name_temp,
+        use_magic      => 0,
+    );
+    is $path, File::Spec->catfile( '2013/03.19', 'img-20130319-160753.jpg' ),
+        "path should be correct when both location and file name template are specified";
+    
+    # Magic.
+    $path = $man->_make_path(
+        image          => $image,
+        timestamp      => $timestamp,
+        use_magic      => 1,
+    );
+    is $path, File::Spec->catfile( $image->get_dir, $image->get_filename . '.jpeg' ),
+        "file extension should be correctly determined by the magic number";
 }
 
 1;

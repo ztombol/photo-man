@@ -19,34 +19,18 @@
 # along with photo-man.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+package TCO::String::Truncator::Types;
 
-package TestsFor;
+use Moose::Util::TypeConstraints;
 
-use Test::Class::Most
-    attributes => [qw(class_to_test)];
+subtype 'TCO::String::Truncator::Types::Length',
+    => as      'Int'
+    => where   { $_ > 0 }
+    => message { "Truncation lenght must be a positive integer, you specified $_" };
 
-INIT {
-    # Run all tests.
-    Test::Class->runtests;
-}
-
-sub startup  : Tests(startup) {
-    my $self  = shift;
-    my $class = ref $self;
-    $class =~ s/^TestsFor:://;
-
-    # Automatically set 'class_to_test' and load the class.
-    eval "use $class";
-    die $@ if $@;
-    $self->class_to_test( $class );
-}
-sub setup    : Tests(setup)    {}
-sub teardown : Tests(teardown) {}
-sub shutdown : Tests(shutdown) {}
-
-sub is_abstract {
-    my $self = shift;
-    return Test::Class::Most->is_abstract( $self );
-}
+subtype 'TCO::String::Truncator::Types::Method'
+    => as      'Str'
+    => where   { $_ eq 'beginning' || $_ eq 'end' }
+    => message { "Truncation method must be one of `beginning' or `end', you specified $_" };
 
 1;
