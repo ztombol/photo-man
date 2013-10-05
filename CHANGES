@@ -1,0 +1,10 @@
+v0.2.0 - 2013-10-05
+
+    * [ENHANCEMENT] output spans entire console width
+    * [FIX] fix crash when EXIF DateTimeDigitized is missing
+ 
+v0.1.0 - 2013-08-30
+
+    * [FEATURE] move/rename based on EXIF DateTimeDigitized
+    * [FEATURE] set filesystem's modification timestamp to EXIF DateTimeDigitized
+
