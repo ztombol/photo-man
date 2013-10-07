@@ -183,6 +183,12 @@ sub fix_timestamp_c : Tests {
     $result[1] = '' . $result[1];   # Stringify timestamp.
     eq_or_diff \@result, [ 0, '2013-03-19T08:07:53' ],
         "setting new timestamp should return 0 and the new timestamp";
+    is ( DateTime->from_epoch(
+            epoch     => $file->get_fs_meta->mtime,
+            time_zone => 'local',
+        ),
+        '2013-03-19T08:07:53',
+        "... and the file system timestamp should be updated" );
 
     $self->_timestamp_uptodate( $man );
     $self->_timestamp_error( $man );
@@ -202,6 +208,10 @@ sub fix_timestamp_nc : Tests {
 
     # Success.
     $file = $self->test_files->[0];
+    my $old_mtime = DateTime->from_epoch(
+        epoch     => $file->get_fs_meta->mtime,
+        time_zone => 'local',
+    );
     @result = $man->fix_timestamp(
         timezone => 'Asia/Tokyo',
         image    => $file,
@@ -209,12 +219,13 @@ sub fix_timestamp_nc : Tests {
     $result[1] = '' . $result[1];   # Stringify timestamp.
     eq_or_diff \@result, [ 0, '2013-03-19T08:07:53' ],
         "setting new timestamp should return 0 and the new timestamp";
+    is ( DateTime->from_epoch(
+            epoch     => $file->get_fs_meta->mtime,
+            time_zone => 'local',
+        ),
+        $old_mtime,
+        "... and the file system timestamp should not be updated" );
 
-    # Fix timestamp before the test.
-    $self->default_manager->fix_timestamp(
-        timezone => 'Asia/Tokyo',
-        image    => $file,
-    ); 
     $self->_timestamp_uptodate( $man );
 
     # NOTE: We do not test for error here. In NON-COMMIT mode error can only
@@ -224,21 +235,26 @@ sub fix_timestamp_nc : Tests {
 }
 
 # Timestamp correct.
-#
-# NOTE: Call after timestamp has been fixed on test_files->[0].
 sub _timestamp_uptodate {
     my $self = shift;
     my $man = shift;
     my ($file, @result);
     
     $file = $self->test_files->[0];
+
+    # Fix timestamp before the test.
+    $self->default_manager->fix_timestamp(
+        timezone => 'Asia/Tokyo',
+        image    => $file,
+    );
+
     @result = $man->fix_timestamp(
         timezone => 'Asia/Tokyo',
         image    => $file,
     ); 
     $result[1] = '' . $result[1];   # Stringify timestamp.
     eq_or_diff \@result, [ 1, '2013-03-19T08:07:53' ],
-        "attempting to set the same timestamp should return 1 and the current timestamp";
+        "attempting to fix a correct timestamp should return 1 and the current timestamp";
 
 }
 
@@ -407,7 +423,7 @@ sub _test_move_and_rename_nc {
         [ 0,   $self->temp_dir . '/dest/2013.03/img-20130319-160753.jpeg' ],
         "successful moving and renaming should return 0 and the new path";
     ok -e $src_path && ! -e $dst_path,
-        "... and the file should not be renamed";
+        "... and the file should not be moved and renamed";
 }
 
 # COMMIT mode:
@@ -431,7 +447,7 @@ sub _test_move_and_rename_c {
         [ 0,   $self->temp_dir . '/moved/2013.03/test.jpg' ],
         "successful moving should return 0 and the new path";
     ok ! -e $src_path && -e $dst_path,
-        "...and the file should not be moved";
+        "...and the file should be moved";
 
     # Rename [0]
     ($op, $src_path, $dst_path) = $self->_test_rename_only( $man );
@@ -440,7 +456,7 @@ sub _test_move_and_rename_c {
         [ 0,   $self->temp_dir . '/moved/2013.03/renamed-20130319-160753.jpeg' ],
         "successful renaming should return 0 and the new path";
     ok ! -e $src_path && -e $dst_path,
-        "...and the file should not be renamed";
+        "...and the file should be renamed";
 
     # Move and Rename [0]
     ($op, $src_path, $dst_path) = $self->_test_move_and_rename( $man );
@@ -449,7 +465,7 @@ sub _test_move_and_rename_c {
         [ 0,   $self->temp_dir . '/dest/2013.03/img-20130319-160753.jpeg' ],
         "successful moving and renaming should return 0 and the new path";
     ok ! -e $src_path && -e $dst_path,
-        "...and the file should not be renamed";
+        "...and the file should be moved and renamed";
 }
 
 # NON-FORCED mode:
@@ -471,7 +487,7 @@ sub _test_diff_file_nf {
         [ 2,   $self->temp_dir . '/src_copy/test.jpg' ],
         "trying to move when another file exists at the destination should return 2 and the intended path";
     ok -e $src_path && -e $dst_path,
-        "... and the file should not be overwritten";
+        "... and both files should be left untouched";
 }
 
 # NON-COMMIT and FORCED mode:
@@ -540,7 +556,7 @@ sub _test_error_nc {
     #       the error is caused by renaming the file without using the tested
     #       interface.
     ok ! -e $dst_path,
-        "... and nothing should be done";
+        "... and the file should not be moved";
 }
 
 # COMMIT modes:
@@ -565,7 +581,7 @@ sub _test_error_c {
     #       the error is caused by renaming the file without using the tested
     #       interface.
     ok ! -e $dst_path,
-        "... and nothing should be done";
+        "... and the file should not be moved";
 }
 
 # ALL modes:
@@ -774,7 +790,7 @@ sub _make_path : Tests {
         use_magic      => 0,
     );
     is $path, '2013/03.19/test.jpg',
-        "filename should be preserved when only location template is specified";
+        "file name should be preserved when only location template is specified";
 
     # File name template.
     $path = $man->_make_path(

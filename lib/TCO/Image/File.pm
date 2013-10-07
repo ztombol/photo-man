@@ -201,6 +201,7 @@ sub move_file {
         # File moved successfully. Update path and thus metadata.
         $self->_set_path( $dest );
     }
+    # TODO: In case of error, should we delete empty directories we created?
 
     # Flip result. move returns 1 on success and 0 on error.
     return not $result;
