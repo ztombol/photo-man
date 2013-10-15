@@ -21,11 +21,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 =head1 NAME
 
-photo-man.pl - A simple photo library management script written in Perl 5
+photo-man.pl - A simple photo management utility written in Perl 5 for the
+Linux command-line
 
 =head1 VERSION
 
-VERSION 0.1
+VERSION 0.2
 
 =head1 SYNOPSIS
 
@@ -33,139 +34,199 @@ photo-man.pl [OPTIONS] FILE...
 
 =head1 DESCRIPTION
 
-C<photo-man> is a utility that aims to make command line based photo library
-management easier on the Linux platform.
+B<photo-man> is a free and open-source utility aiming to simplify command-line
+based photo management on the Linux platform.
 
-C<photo-man> can set the file system's modification timestamp of images to the
-time they were taken, i.e. to C<EXIF DateTimeDigitized>. The script can also
-sort and rename images based on the same timestamp, and guess the extension
-using the file's magic number.
+B<photo-man> can move and rename images according to a user specified template
+referencing parts of the C<EXIF DateTimeDigitized> timestamp,
+set files' modification time to C<EXIF DateTimeDigitized> shifted to the
+local time zone,
+and determine the correct extension using the magic number.
 
-To access embedded metadata of images, C<photo-man> uses the excellent
-L<Image::ExifTool> module (see http://sno.phy.queensu.ca/~phil/exiftool/).
+The utility uses the excellent L<Image::ExifTool> module to access metadata
+embedded in image files.
 
-photo-man and this documentation is licensed under GPL version 3.
+B<photo-man> and this documentation is licensed under GPL version 3.
 
 =head1 ARGUMENTS
 
-The script takes one or more files as arguments. Files can be specified by
-name or as globs.
+The script takes one or more files as arguments. Files can be specified by name
+or as globs.
 
-    photo-man --rename 'img-\%Y\%m\%d-\%H\%M\%S' beach.jpeg ~/photos/*.jpg
+    photo-man --rename 'img-%Y%m%d-%H%M%S' beach.jpeg ~/photos/*.jpg
 
-The order of processing is determined by the system's locale. 
+The order of processing is determined by the system's locale.
 
 =head1 OPTIONS
 
-Mandatory arguments are necessary for both short and long options.
+Mandatory arguments to long options are mandatory for short options too.
 
 =over
 
-=item -t, --touch=TIME_ZONE
+=item B<Operations>
 
-Set the file system's modification timestamp to B<EXIF DateTimeDigitised>
-shifted to the local time zone. Since EXIF can not handle time zone
-information, the original time zone where the photo was taken needs to be
-manually specified. The C<TIME_ZONE> argument has to be specified in a format
-accepted by L<DateTime|DateTIme/"DateTime-E<gt>new(_..._)">.'
-
-    photo-man --touch='Asia/Tokyo' photos/*     # Olson DB time zone name
-    photo-man --touch='+0900' photos/*          # offset string
-
-If B<'local'> is specified as the original time zone, the EXIF timestamp is
-used directly without first converting it into the local time zone.
+=over
 
 =item -m, --move=TEMPLATE
 
-Move files to a new location specified by a template referencing parts of the
-C<EXIF DateTimeDigitised> timestamp. Filenames are preserved and directories
-are created as necessary. In addition to any character allowed in filenames by
-the file system and slashes, the C<TEMPLATE> can contain
-L<strtime format strings|DateTime/"strftime Patterns"> to enable inserting
-timestamp elements into directory names.
+Move files to new locations specified by C<TEMPLATE>, a string containing any
+character allowed in a path by the file system and
+L<strtime format strings|DateTime/"strftime Patterns"> referencing parts of
+C<EXIF DateTimeDigitized>.
+File names are preserved and directories are created as necessary.
 
-For example, the command below will move all images with jpeg extension in the
-current directory to separate directories based on which year, month and day
-they were taken.
+For example, the command below will move all images with 'jpeg' extension in
+the current directory to separate directories based on which year, month and
+day they were taken.
 
-    photo-man -m '\%Y/\%m.%d' *.jpeg
+    photo-man -m '%Y/%m.%d' *.jpeg
 
-This command would move the files with the given timestamps on the left to the
-locations on the right, while preserving filenames and creating the necessary
-directories.
+This command would make the following changes, assuming the files on the left
+match the criteria and their timestamps are the ones given on the right.
 
-    image-1.jpeg   2013-07-21 16:21:43  ->  2013/07.21/image-1.jpeg
-    image-2.jpeg   2013-06-30 08:32:00  ->  2013/06.30/image-2.jpeg
-    image-3.jpeg   2013-07-21 11:44:05  ->  2013/07.21/image-3.jpeg
+    file                moved to                    DateTimeDigitized
+    --------------      -------------------------   -------------------
+    ./image-1.jpeg  ->  ./2013/07.21/image-1.jpeg   2013-07-21 16:21:43
+    ./image-2.jpeg  ->  ./2013/06.30/image-2.jpeg   2013-06-30 08:32:00
+    ./image-3.jpeg  ->  ./2013/07.21/image-3.jpeg   2013-07-21 11:44:05
 
 =item -r, --rename=TEMPLATE
 
-Rename files in-place, leaving them at their current location. Similarly to the
-C<--move> option, the new filename is specified by a template referencing parts
-of the C<EXIF DateTimeDigitised> timestamp, and the C<TEMPLATE> works the same
-way.
+Rename files to new file names specified by C<TEMPLATE>, a string containing
+any character allowed in a file name by the file system and
+L<strtime format strings|DateTime/"strftime Patterns"> referencing parts of
+C<EXIF DateTimeDigitized>.
+Files are renamed in-place and left at their original location.
 
-For example, the command below will rename all images with JPG extension in the
-directory issued to names that contain the timestamp from the year all the way
-down to the second.
+For example, the command below will rename all images with 'jpeg' extension in
+the current directory to names containing the date and time they were taken.
 
-    photo-man --rename 'img-\%Y\%m\%d-\%H\%M\%S' *.JPG
+    photo-man -r 'img-%Y%m%d-%H%M%S' *.jpeg
 
-The command would rename the files with the given timestamps on the left to the
-named on the right, while leaving them at their original location.
+This command would make the following changes, assuming the files on the left
+match the criteria and their timestamps are the ones given on the right.
 
-    image-1.jpeg   2013-07-21 16:21:43  ->  img-20130721-162143.JPG
-    image-2.jpeg   2013-06-30 08:32:00  ->  img-20130630-083200.JPG
-    image-3.jpeg   2013-07-21 11:44:05  ->  img-20130721-114405.JPG
+    file                renamed to                   DateTimeDigitized
+    --------------      --------------------------   -------------------
+    ./image-1.jpeg  ->  ./img-20130721-162143.jpeg   2013-07-21 16:21:43
+    ./image-2.jpeg  ->  ./img-20130630-083200.jpeg   2013-06-30 08:32:00
+    ./image-3.jpeg  ->  ./img-20130721-114405.jpeg   2013-07-21 11:44:05
 
-Note that C<TEMPLATE> does not contain the extension. By default the string
-after the last dot in the filename is extracted and used as the extension for
-the new filename. You can alter this behaviour and use the magic number in the
-file to guess the proper extension. See C<--use-magic> for details.
+C<TEMPLATE> does not contain the extension which is automatically appended to
+new file names. By default the substring after the last dot of the file name is
+used as the extension.
+The extensions can also be determined from the file's magic number instead. See
+C<--use-magic> below for details.
+
+=item -t, --touch=TIME_ZONE
+
+Set the file system modification timestamp of files to
+C<EXIF DateTimeDigitized> shifted into the local time zone. The C<TIME_ZONE>
+argument is the time zone of the location where the photo was taken. This
+arguments has to be supplied manually as EXIF can not handle time zone
+information. It can be given in a format recognised by
+L<DateTime|DateTime/"DateTime-E<gt>new(_..._)">. The following two commands
+mean the same.
+
+    photo-man -t 'Asia/Tokyo' photos/*.jpeg     # Olson DB time zone name
+    photo-man -t '+0900' photos/*.jpeg          # offset string
+
+For example, if the command above is issued on a machine whose local time zone
+is set to 'Europe/Budapest' in daylight saving mode (i.e. +0200), the
+modification timestamp would be set as shown on the right, assuming the files
+on the left match the criteria and their timestamps are the ones given in the
+middle,
+
+    file             DateTimeDigitized     Modification time
+    --------------   -------------------   -----------------------------------
+    ./image-1.jpeg   2013-07-21 16:21:43   2013-07-21 09:21:43.000000000 +0200
+    ./image-2.jpeg   2013-06-30 06:32:00   2013-06-29 23:32:00.000000000 +0200
+
+If shifting the timestamps into the local time zone is not desirable, one can
+specify C<local> as the original time zone, in which case the EXIF timestamp is
+used directly without first shifting it into the local time zone.
+
+=back
+
+=item B<Operation modifiers>
+
+=over
 
 =item -u, --use-magic
 
-This option can be used together with C<--rename> to determine the file's
-extension using it's magic number. Obviously, this will correct the extension
-of files that are named incorrectly or missing altogether.
+By default the extension in a C<--rename> operation is determined by the
+portion of the file name after the last dot.
+This behaviour is altered when using C<--use-magic> and the file's magic number
+is used to determine the extension.
 
-The command bellow corrects the extension of each file in the directory issued
-while preserving the remaining portion of the filename.
+For example, the command below will rename all images in the current whose file
+name starts 'IMG' while determining the extensions using the files' magic
+number.
 
-    photo-man --use-magic --rename -- *
+    photo-man -u -r 'img-%Y%m%d-%H%M%S' IMG*
 
-Note, the double hyphens are necessary to avoid C<--rename> using the C<*> as
-its template instead of letting it specify every file in the current directory
-as inputs. Also, the template argument to C<--rename> is optional only in this
-case, when C<--use-magic> is used to fix the extensions, without otherwise
-renaming files.
+This command would make the following changes, assuming the files on the left
+match the criteria and their timestamps are the ones given on the right.
 
-For example, the command above would rename files on the left to the ones on
-the right.
+    file               renamed to                   DateTimeDigitized
+    -------------      --------------------------   -------------------
+    ./image-1.JPG  ->  ./img-20130721-162143.jpeg   2013-07-21 16:21:43
+    ./image-2.jpg  ->  ./img-20130630-083200.jpeg   2013-06-30 08:32:00
+    ./image-3.jpe  ->  ./img-20130721-114405.jpeg   2013-07-21 11:44:05
 
-    beach.jpg     ->  beach.jpeg
-    diving        ->  diving.jpeg
-    octopus.TIFF  ->  octopus.tiff
+It is also possible to use C<--rename> without a C<TEMPLATE> together with
+C<--use-magic> to only correct the extensions and do not rename files.
+Note that the C<--> is necessary to prevent C<IMG*> to be interpreted as an
+argument to C<-r>.
 
-When this option is not specified, the string after the last dot of the
-filename is used as the extension.
+    photo-man -u -r -- IMG*
+
+This command would make the following changes on the same set of files.
+
+    file               renamed to       DateTimeDigitized
+    -------------      --------------   -------------------
+    ./image-1.JPG  ->  ./image-1.jpeg   2013-07-21 16:21:43
+    ./image-2.jpg  ->  ./image-2.jpeg   2013-06-30 08:32:00
+    ./image-3.jpe  ->  ./image-3.jpeg   2013-07-21 11:44:05
+
+Also using C<--use-magic> is the only case where the argument to C<--rename>
+can be omitted.
+
+=back
+
+=item B<Processing modes>
+
+=over
 
 =item -c, --commit
 
-By default, photo-man performs a dry-run that outputs what would have been
-done, without making any changes to the file system. The dry-run can be used to
-tune the command until the desired configuration is achieved, before committing
-the changes to the file system.
+Make the listed changes to the file system. By default, B<photo-man> performs a
+dry-run that only outputs what would have been done, without making any changes
+to the file system. This dry-run can be used to tune the command until the
+desired outcome is achieved, before committing the changes to the file system.
 
 =item -f, --force
 
-By default, destructive operations are not executed only reported. To avoid
-data loss irreversible operations, such as overwriting of files, are performed
-only when this option is explicitly specified.
+Execute irreversible operations. To avoid data loss, irreversible operations,
+such as overwriting files, are performed only when this option is explicitly
+specified. By default, destructive operations are not executed, only reported.
+
+=back
+
+=item B<Output control>
+
+=over
 
 =item -v, --verbose
 
-Produce verbose output.
+Produce verbose output. By default, a compact and concise output format is
+used.
+
+=back
+
+=item B<Generic program information>
+
+=over
 
 =item -h, --help
 
@@ -173,19 +234,40 @@ Display usage information and exit.
 
 =item --man
 
-Display the whole documentation and exit.
+Display complete documentation and exit.
 
 =back
 
+=back
+
+=head1 BUGS
+
+=head2 Bug reporting
+
+Bug reports can be submitted via B<photo-man>'s issue tracker on GitHub at
+<https://github.com/ztombol/photo-man/issues>.
+
+=head2 Known bugs
+
+When moving and/or renaming multiple files, B<photo-man> in non-commit mode can
+not yet warn you if more than one file's new path resolves to the same, i.e. a
+situation that can result in data loss if not careful.
+In commit mode the collisions are reported correctly and the first one
+processed among the conflicting files will be moved and/or renamed, while the
+rest will be skipped avoiding data loss (non conflicting files will be
+processed as usual).
+Data loss is expected only in commit and forced mode when the file processed last
+will overwrite the rest of the colliding files.
+
 =head1 COPYRIGHT
 
-photo-man, including test assets such as image files, and this manual is
+B<photo-man>, including test assets such as image files, and this manual is
 licensed under GPL version 3.
 
 You should have received a copy of the GNU General Public License along with
-photo-man.  If not, see <http://www.gnu.org/licenses/>.
+B<photo-man>. If not, see <http://www.gnu.org/licenses/>.
 
-=head1 AUTHORS
+=head1 AUTHOR
 
 Zoltan Vass <zoltan.tombol (at) gmail (dot) com>
 
