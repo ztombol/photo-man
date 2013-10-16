@@ -1,10 +1,15 @@
-v0.2.0 - 2013-10-05
 
-    * [ENHANCEMENT] output spans entire console width
-    * [FIX] fix crash when EXIF DateTimeDigitized is missing
- 
-v0.1.0 - 2013-08-30
+v0.2.0 / 2013-10-16 / Crab
 
-    * [FEATURE] move/rename based on EXIF DateTimeDigitized
-    * [FEATURE] set filesystem's modification timestamp to EXIF DateTimeDigitized
+    * [ENHANCEMENT] output now spans the entire terminal
+    * [ENHANCEMENT] vastly improved and expanded test suite
+    * [ENHANCEMENT] examples added to the wiki
+    * [ENHANCEMENT] better documentation
+    * [ENHANCEMENT] major code clean-ups
+    * [FIX] fix crash when `EXIF DateTimeDigitized` is missing
 
+v0.1.0 / 2013-08-30 / "Octopus"
+
+    * [FEATURE] move/rename based on `EXIF DateTimeDigitized`
+    * [FEATURE] determine extension using magic number
+    * [FEATURE] set file system modification time to `EXIF DateTimeDigitized`
