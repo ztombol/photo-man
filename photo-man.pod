@@ -61,9 +61,7 @@ The order of processing is determined by the system's locale.
 
 Mandatory arguments to long options are mandatory for short options too.
 
-=over
-
-=item B<Operations>
+=head2 Operations
 
 =over
 
@@ -148,7 +146,7 @@ used directly without first shifting it into the local time zone.
 
 =back
 
-=item B<Operation modifiers>
+=head2 Operation modifiers
 
 =over
 
@@ -194,7 +192,7 @@ can be omitted.
 
 =back
 
-=item B<Processing modes>
+=head2 Processing modes
 
 =over
 
@@ -213,7 +211,7 @@ specified. By default, destructive operations are not executed, only reported.
 
 =back
 
-=item B<Output control>
+=head2 Output control
 
 =over
 
@@ -224,7 +222,7 @@ used.
 
 =back
 
-=item B<Generic program information>
+=head2 Generic program information
 
 =over
 
@@ -235,8 +233,6 @@ Display usage information and exit.
 =item --man
 
 Display complete documentation and exit.
-
-=back
 
 =back
 
