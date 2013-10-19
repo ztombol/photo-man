@@ -29,7 +29,6 @@ use MooseX::FollowPBP;
 use namespace::autoclean;
 use Carp;
 
-use Image::ExifTool;
 use File::stat;
 use File::Copy;
 use File::Path qw(make_path);
@@ -38,100 +37,82 @@ use File::LibMagic;
 our $VERSION = '0.2';
 $VERSION = eval $VERSION;
 
-# Filename of image.
+# Path of file.
 has 'path' => (
     is       => 'rw',
     isa      => 'Str',
     required => 1,
     reader   => 'get_path',
     writer   => '_set_path',
-    trigger  => \&_reload_meta,
-);
-
-# EXIF metadata associated with the image.
-has 'img_meta' => (
-    is       => 'rw',
-    isa      => 'Ref',
-    reader   => 'get_img_meta',
-    writer   => '_set_img_meta',
-    lazy     => 1,
-    builder  => '_load_img_meta',
+    trigger  => \&_trigger_path,
 );
 
 # File system metadata.
 has 'fs_meta' => (
     is      => 'rw',
-    isa     => 'Ref',
+    isa     => 'Maybe[Object]',
     reader  => 'get_fs_meta',
     writer  => '_set_fs_meta',
+    clearer => '_clear_fs_meta',
     lazy    => 1,
     builder => '_load_fs_meta',
 );
 
-# Exiftool object for metadata operations, e.g. reading/writing tags.
-has 'exiftool' => (
-    is      => 'ro',
-    isa     => 'Ref',
-    reader  => '_get_exiftool',
-    default => sub { new Image::ExifTool },
-);
-
-# Loads file system metadata, e.g. timestamps, ownership, permissions, etc.
+# Returns file system metadata (e.g. timestamps, permissions) of the file
+# specified with the currently set path.
 #
-# @returns a File::stat object containing the file system metadata
+# @param [in] $0  self
+#
+# @returns  a File::Stat object containing the file system metadata
 sub _load_fs_meta {
     local $_;
     my $self = shift;
-
     return stat( $self->get_path );
 }
 
-# Loads metadata found in the image file, e.g. EXIF, IPTC, XMP, etc.
-#
-# @returns a hashref containing metadata embedded in the image file
-sub _load_img_meta {
-    local $_;
+# Clears metadata of file. Triggered when path is changed.
+sub _trigger_path {
     my $self = shift;
-
-    # Extract metadata.
-    my $exif_tool = new Image::ExifTool;
-    return $exif_tool->ImageInfo( $self->get_path );
+    $self->_clear_meta;
 }
 
-# Reloads file system and image embedded metadata. Triggered when path is
-# changed.
-sub _reload_meta {
-    my ( $self, $new_path, $old_path ) = @_;
-    $self->_set_fs_meta( $self->_load_fs_meta );
-    $self->_set_img_meta( $self->_load_img_meta );
-}
-
-# Returns the basename of the file (filename and extension).
+# Clears file system metadata, so that it will get reloaded automatically when
+# accessed next time.
 #
-# @param [in] $0  file object
-# returns basename including extension
+# @param [in] $0  self
+sub _clear_meta {
+    my $self = shift;
+    $self->_clear_fs_meta;
+}
+
+# Returns the basename, i.e. file name, dot and extension, of the file.
+#
+# @param [in] $0  self
+#
+# returns  basename as a string
 sub get_basename {
     my $self = shift;
     return (File::Spec->splitpath( $self->get_path ))[2];
 }
 
-# Returns the filename (basename without the extension and dot).
+# Returns the file name (basename without the extension and dot).
 #
-# @param [in] $0  file object
+# @param [in] $0  self
 #
-# @returns  filename without extension
-sub get_filename {
+# @returns  file name without extension
+sub get_file_name {
     my $self = shift;
     $self->get_path =~ m{([^/]+?).[^.]+\Z};
     return $1;
 }
 
-# Returns the extension of the file (portion after the last dot). The extension
-# can be determined from the basename (default) or using the magic number of
-# the file.
+# Returns the extension of the file. By default and when the parameter
+# evaluates to false, the extension is extracted from the basename (substring
+# after last dot). If the parameter is true, the file's magic number is used to
+# determine the extension.
 #
-# @param [in] $0  file object
-# @param [in] $1  use LibMagic to get extension?
+# @param [in] $0  self
+# @param [in] $1  use magic number to get extension?
 #
 # @returns  extension
 sub get_extension {
@@ -140,7 +121,7 @@ sub get_extension {
 
     if ( $use_magic ) {
         my $magic = File::LibMagic->new();
-        $magic->checktype_filename($self->get_path) =~ m{image/(.*?);};
+        $magic->checktype_filename($self->get_path) =~ m{[^/]+/(.+);};
         return $1;
     }
     else {
@@ -149,46 +130,28 @@ sub get_extension {
     }
 }
 
-# Returns the parent directory of the file.
+# Returns the directory portion of the file's path.
 #
-# @param [in] $0  file object
-# returns parent parent directory
+# @param [in] $0  self
+#
+# returns  directories as a string
 sub get_dir {
     my $self = shift;
     return File::Spec->canonpath( (File::Spec->splitpath( $self->get_path ))[1] );
 }
 
-# Returns a DateTime object representing the requested timestamp.
+# Moves the file while creating the directories leading up to the new location
+# if they do not exist already. Upon success the file system will be reloaded.
 #
-# @param [in] $0  file object
-# @param [in] $1  name of requested timestamp (for available tags see:
-#                 http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/EXIF.html)
-# @param [in] $2  time zone of the timestamp, defaults to 'floating'
-# @returns DateTime representation of therequest EXIF timestamp
-sub get_timestamp {
-    my $self = shift;
-    my $tag_name = shift;
-    my $time_zone = shift || 'floating';
-
-    # Parse date and create a DateTime object.
-    my $parser = DateTime::Format::Strptime->new(
-        pattern   => '%Y:%m:%d %H:%M:%S',
-        time_zone => $time_zone,
-    );
-    my $timestamp = $parser->parse_datetime(
-        $self->get_img_meta->{ $tag_name }
-    );
-
-    return $timestamp;
-}
-
-# Moves the file and creates the directories leading up to the new location if
-# they do not exist already. Upon success the file system and image metadata
-# will be reloaded.
+# @param [in] $0  self
+# @param [in] $1  new path of file
 #
-# @param [in] $1  new path of file (includes filename)
 # return  0 on success
 #         1 otherwise
+#
+# FIXME: implement this, change tests, and change photo-man.pm
+# return -1 on error
+#         0 otherwise
 sub move_file {
     my $self = shift;
     my $dest = shift;
@@ -196,57 +159,57 @@ sub move_file {
     # Make sure the directory tree exists up to the destination.
     make_path( (File::Spec->splitpath($dest))[1] );
 
-    my $result;
-    if ( $result = move($self->get_path, $dest) ) {
-        # File moved successfully. Update path and thus metadata.
+    if ( move($self->get_path, $dest) ) {
+        # File moved successfully. Update path and thus clear metadata.
         $self->_set_path( $dest );
+        return 0;
     }
-    # TODO: In case of error, should we delete empty directories we created?
 
-    # Flip result. move returns 1 on success and 0 on error.
-    return not $result;
+    # Error moving file.
+    return -1;
 }
 
-# Same as above just using exiftool to move the file and create necessary
-# directories.
-#sub move_file {
-#    my $self = shift;
-#    my $dest = shift;
+# Returns the file's last modification time as a DateTime object.
 #
-#    my $exif_tool = new Image::ExifTool;
+# @param [in] $0  self
 #
-#    # This performs the move immediately
-#    my $result = $exif_tool->SetFileName(
-#        $self->get_path,
-#        $dest,
-#    );
-#
-#    return not $result;
-#}
+# returns  last modification time as a DateTime object
+sub get_mtime {
+    my $self = shift;
 
-# Changes the file system modification timestamps of the file. Upon success the
-# file system and image metadata will be reloaded.
+    # Stat successful.
+    if ( defined $self->get_fs_meta ) {
+        return DateTime->from_epoch(
+            epoch     => $self->get_fs_meta->mtime,
+            time_zone => 'local',
+        );
+    }
+
+    # Could not stat file.
+    return undef;
+}
+
+# Changes the file's last modification timestamp to the given time. Upon
+# success the file system metadata (e.g. timestamps, permissions) will be
+# reloaded.
 #
-# @param [in] mtime  modification timestamp to set (DateTime ref)
+# @param [in] $0  self
+# @param [in] $1  new modification timestamp to set (DateTime ref)
+#
 # return -1 on error
 #         0 on successful timestamp change
-sub set_mod_time {
+sub set_mtime {
     my $self = shift;
-    my $mtime = shift;
-    my $exiftool = $self->_get_exiftool;
+    my $new_time = shift;
+
+    my $mtime = $new_time->epoch();
+    my $atime = $mtime;
 
     # Set new timestamp.
-    my ( $success, $err_str ) = $exiftool->SetNewValue(
-        FileModifyDate => $mtime,
-        Protected      => 1,
-    );
-
-    return -1 if ( ! $success );
-
-    # Write timestamp to file system.
-    if ( $exiftool->SetFileModifyDate($self->get_path) == 1 ) {
-        # Timestamp changed. Reload metadata.
-        $self->_reload_meta;
+    my $success = utime $atime, $mtime, $self->get_path();
+    if ( $success ) {
+        # Timestamp changed. Clear metadata.
+        $self->_clear_meta;
         return 0;
     }
 

@@ -77,6 +77,7 @@ sub shutdown : Tests(shutdown) {
 # be preserved for debugging purposes (see the NOTE below).
 sub _create_sandbox {
     my $self = shift;
+    my $class = $self->class_to_test;
     my $tmp = '/tmp';   # Parent of the temp directory.
     my $res = 't/res';  # Directory containing the test files.
 
@@ -111,13 +112,43 @@ sub _create_sandbox {
     
     # Instantiate test file object.
     $self->test_files([
-        TCO::Image::File->new(
+        $class->new(
             path => File::Spec->catfile( $src, 'test.jpg' ) ),
-        TCO::Image::File->new(
+        $class->new(
             path => File::Spec->catfile( $src, 'test2.jpg') ),
-        TCO::Image::File->new(
+        $class->new(
             path => File::Spec->catfile( $src, 'no_meta.jpg') ),
+        $class->new(
+            path => File::Spec->catfile( $src, 'non_existent.jpg') ),
     ]);
+}
+
+# Returns a reference to the file system metadata in a hashref.
+#
+# @param [in] file  file whose metadata to save
+#
+# @returns  hashref containing the references of metadata
+sub _save_metadata_refs {
+    my $self = shift;
+    my $file = shift;
+
+    return { fs_meta => $file->get_fs_meta };
+}
+
+# Tests if file system metadata is up to date, i.e. changed since it was
+# recorded by `_save_metadata_refs`.
+#
+# @param [in] file          file whose metadata to check
+# @param [in] meta_hashref  reference to the hash containing the metadata
+#                           references
+# @param [in] op            text to display in test description
+sub _is_metadata_uptodate {
+    my $self = shift;
+    my ($file, $meta_hashref, $op) = @_;
+
+    # Check file system metadata.
+    isnt $file->get_fs_meta, $meta_hashref->{ fs_meta },
+        "fs metadata should be reloaded after " . $op;
 }
 
 sub constructor : Tests {
@@ -135,18 +166,16 @@ sub path : Tests {
     my $self = shift;
     my $file  = $self->test_files->[0];
     my $file2 = $self->test_files->[1];
+    my $old_meta = $self->_save_metadata_refs( $file );
     
     can_ok $file, '_set_path';
     
-    my $old_fs_meta = $file->get_fs_meta;
-    my $old_img_meta = $file->get_img_meta;
-
     # Setter.
     lives_ok { $file->_set_path( $file2->get_path ) }
-        "'set_path' should succeed";
+        "'_set_path' should succeed";
 
-    # Updated metadata after moving.
-    $self->_metadata_updated( $file, $old_fs_meta, $old_img_meta, 'setting path');
+    # Check if metadata has been reloaded. 
+    $self->_is_metadata_uptodate( $file, $old_meta, 'setting path');
 }
 
 sub get_basename : Tests {
@@ -155,16 +184,16 @@ sub get_basename : Tests {
 
     can_ok $file, 'get_basename';
     is $file->get_basename, 'test.jpg',
-        "filename with extension should be returned correctly";
+        "file name with extension should be returned correctly";
 }
 
-sub get_filename : Tests {
+sub get_file_name : Tests {
     my $self = shift;
     my $file = $self->test_files->[0];
 
-    can_ok $file, 'get_filename';
-    is $file->get_filename, 'test',
-        "filename without extension should be returned correctly";
+    can_ok $file, 'get_file_name';
+    is $file->get_file_name, 'test',
+        "file name without extension should be returned correctly";
 }
 
 sub get_extension : Tests {
@@ -189,52 +218,59 @@ sub get_dir : Tests {
         "directory portion of the path should be returned correctly";
 }
 
-sub get_timestamp : Tests {
-    my $self = shift;
-    my $file = $self->test_files->[0];
-
-    can_ok $file, 'get_timestamp';
-    is $file->get_timestamp( 'CreateDate' )
-        ->set_time_zone('Europe/Budapest'),
-        '2013-03-19T16:07:53',
-        "a timestamp should have 'floating' time zone set by default";
-    is $file->get_timestamp( 'CreateDate', 'Asia/Tokyo' )
-        ->set_time_zone('Europe/Budapest'),
-        '2013-03-19T08:07:53',
-        "a timestamp should have its time zone correctly set when one is specfied";
-}
-
 sub move_file : Tests {
     my $self = shift;
     my $file = $self->test_files->[0];
+    my $old_meta = $self->_save_metadata_refs( $file );
     my $new_path;
 
     can_ok $file, 'move_file';
     
     # Moving file to non-existent directory.
     $new_path = File::Spec->catfile( $self->temp_dir, 'src', 'moved.jpg' );
-    ok ! $file->move_file($new_path) && -e $new_path,
+    is $file->move_file($new_path) == 0 && -e $new_path, 1,
         "file should be moved correctly to an existing directory";
-
-    my $old_fs_meta = $file->get_fs_meta;
-    my $old_img_meta = $file->get_img_meta;
 
     # Moving file to non-existent directory.
     $new_path = File::Spec->catfile( $self->temp_dir, 'dest', 'moved.jpg' );
-    ok ! $file->move_file($new_path) && -e $new_path,
+    is $file->move_file($new_path) == 0 && -e $new_path, 1,
         "file should be moved correctly to a non-existing folder";
     
-    $self->_metadata_updated( $file, $old_fs_meta, $old_img_meta, 'setting timestamp');
+    # Check if metadata has been reloaded. 
+    $self->_is_metadata_uptodate( $file, $old_meta, 'moving file');
+
+    # Error moving file.
+    $new_path = File::Spec->catfile( '/usr/bin/moved.jpg' );
+    is $file->move_file($new_path) == -1 && ! -e $new_path, 1,
+        "error while moving should be reported correctly";
 }
 
-sub set_mod_time : Tests {
+sub get_mtime : Tests {
     my $self = shift;
     my $file = $self->test_files->[0];
+    my $file2 = $self->test_files->[3];
 
-    can_ok $file, 'set_mod_time';
+    can_ok $file, 'get_mtime';
 
-    # New time stamp.
-    my $new_mtime = DateTime->new(
+    # Success.
+    my $want = DateTime->from_epoch( epoch => $file->get_fs_meta->mtime );
+    is $file->get_mtime, $want,
+        "modification time should be returned correctly";
+    
+    # Cannot stat file.
+    is $file2->get_mtime, undef,
+        "undef should be returned when file system metadata is not available";
+}
+
+sub set_mtime : Tests {
+    my $self = shift;
+    my $file = $self->test_files->[0];
+    my $old_meta_refs = $self->_save_metadata_refs( $file );
+
+    can_ok $file, 'set_mtime';
+
+    # New time stamp in original time zone.
+    my $dt_orig = DateTime->new(
         year      => 2013,
         month     => 8,
         day       => 9,
@@ -242,37 +278,22 @@ sub set_mod_time : Tests {
         minute    => 55,
         second    => 17,
         time_zone => 'Asia/Tokyo',
-        formatter => DateTime::Format::Strptime->new(
-            pattern => '%Y:%m:%d %H:%M:%S%z'
-        ),
     );
 
-    # Time stamp in original and local time zones.
-    (my $dt_orig = $new_mtime) =~ s/(\d\d)\Z/:$1/;
-    $new_mtime->set_time_zone( 'local' );
-    (my $dt_local = $new_mtime) =~ s/(\d\d)\Z/:$1/;
-    
-    my $old_fs_meta = $file->get_fs_meta;
-    my $old_img_meta = $file->get_img_meta;
+    # New time stamp in local time zone.
+    my $dt_local = $dt_orig->clone();
+    $dt_local->set_time_zone( 'local' );
 
     # Set new time stamp.
-    is $file->set_mod_time( $dt_orig ), 0,
+    is $file->set_mtime( $dt_orig ), 0,
         'changing file system timestamp should succeed';
-    is $file->get_img_meta->{ FileModifyDate }, $dt_local,
+
+    my $dt_set = DateTime->from_epoch( epoch => $file->get_fs_meta->mtime );
+    is $dt_set, $dt_local,
         'timestamp should be converted into local time zone';
-    
-    $self->_metadata_updated( $file, $old_fs_meta, $old_img_meta, 'setting timestamp');
-}
 
-sub _metadata_updated {
-    my $self = shift;
-    my ($file, $old_fs_meta, $old_img_meta, $op) = @_;
-
-    # Updated metadata after moving.
-    isnt $file->get_fs_meta, $old_fs_meta,
-        "fs metadata should be reloaded after " . $op;
-    isnt $file->get_img_meta, $old_img_meta,
-        "image metadata should be reloaded after " . $op;
+    # Check if metadata has been reloaded. 
+    $self->_is_metadata_uptodate( $file, $old_meta_refs, 'setting modification timestamp' );
 }
 
 1;

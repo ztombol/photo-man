@@ -51,7 +51,7 @@ use File::Glob ':bsd_glob'; # Producing file names
 
 use lib 'lib';
 use TCO::Output::Columnar::Format;
-use TCO::Image::File;
+use TCO::Image::File::Image;
 use TCO::Image::PhotoMan;
 
 our $VERSION = '0.2';
@@ -95,12 +95,14 @@ sub run {
     # Print column header.
     $class->print_header( %args );
 
+    # FIXME: globbing happens within the shell and complete path are handed to
+    #        the script. So globbing is not necessary here.
     # Assemble pattern that will be used for globbing.
     my $pattern = '{' . join(',', @argv) . '}';
     while (my $file = glob("$pattern")) {
     
         # Load file.
-        my $image = TCO::Image::File->new( path => $file );
+        my $image = TCO::Image::File::Image->new( path => $file );
         
         # Perform requested actions on file.
         $class->process_image(

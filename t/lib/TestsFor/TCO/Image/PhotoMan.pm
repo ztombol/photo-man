@@ -26,7 +26,7 @@ use Test::Class::Most
     parent      =>'TestsFor',
     attributes  => [qw( default_manager test_files temp_dir )];
 
-use TCO::Image::File;
+use TCO::Image::File::Image;
 
 use Carp;
 use File::Temp;
@@ -122,11 +122,11 @@ sub _create_sandbox {
     
     # Instantiate test file object.
     $self->test_files([
-        TCO::Image::File->new(
+        TCO::Image::File::Image->new(
             path => File::Spec->catfile( $src, 'test.jpg' ) ),
-        TCO::Image::File->new(
+        TCO::Image::File::Image->new(
             path => File::Spec->catfile( $src, 'test2.jpg') ),
-        TCO::Image::File->new(
+        TCO::Image::File::Image->new(
             path => File::Spec->catfile( $src, 'no_meta.jpg') ),
     ]);
 }
@@ -285,7 +285,12 @@ sub _timestamp_error {
 
     # Error.
     $file = $self->test_files->[1];
-    move( $file->get_path, $file->get_path . ".bak" );  # Rename the file to cause an error.
+    # Cause the file system and image metadata to be read so it will be cached
+    # while the path is valid, and move the file w/o using the tested interface
+    # to cause an error in timestamp setting.
+    $file->get_img_meta;
+    $file->get_fs_meta;
+    move( $file->get_path, $file->get_path . ".bak" );
     @result = $man->fix_timestamp(
         timezone => 'Asia/Tokyo',
         image    => $file,
@@ -552,10 +557,10 @@ sub _test_error_nc {
         [ $op, $dst_path ],
         [ 0,   $self->temp_dir . '/error/2013.03/img-20130319-160753.jpg' ],
         "moving is not performed so 0 and the new path should be returned";
-    # NOTE: We could/should test for the existence of the source. But currently
-    #       the error is caused by renaming the file without using the tested
-    #       interface.
-    ok ! -e $dst_path,
+    # NOTE: `_test_error` renames the file directly with `move` to cause an
+    #       error in moving. The source path returned is the renamed path that
+    #       is out of sync with the path stored in the Image object.
+    ok -e $src_path && ! -e $dst_path,
         "... and the file should not be moved";
 }
 
@@ -577,10 +582,10 @@ sub _test_error_c {
         [ $op, $dst_path ],
         [ -1,  $self->temp_dir . '/error/2013.03/img-20130319-160753.jpeg' ],
         "when an error occours in moving, -1 and the intended path should be returned";
-    # NOTE: We could/should test for the existence of the source. But currently
-    #       the error is caused by renaming the file without using the tested
-    #       interface.
-    ok ! -e $dst_path,
+    # NOTE: `_test_error` renames the file directly with `move` to cause an
+    #       error in moving. The source path returned is the renamed path that
+    #       is out of sync with the path stored in the Image object.
+    ok -e $src_path && ! -e $dst_path,
         "... and the file should not be moved";
 }
 
@@ -605,8 +610,6 @@ sub _test_common {
     ok -e $src_path,
         "... and nothing should be done";
     
-    # TODO: Should we change the behaviour here? Would it be more logical to
-    #       remove the source/overwrite the destination?
     # A copy of the file is already at the destination.
     ($op, $src_path, $dst_path) = $self->_test_same_file( $man );
     eq_or_diff
@@ -635,8 +638,8 @@ sub _test_move_only {
     my $self = shift;
     my $man = shift;
     my $image = $self->test_files->[0];
-
     my $src_path = $image->get_path;
+
     my ($op, $dst_path) = $man->move_and_rename(
         image          => $image,
         location_temp  => File::Spec->catfile( $self->temp_dir, 'moved/%Y.%m', ),
@@ -650,8 +653,8 @@ sub _test_rename_only {
     my $self = shift;
     my $man = shift;
     my $image = $self->test_files->[0];
-
     my $src_path = $image->get_path;
+
     my ($op, $dst_path) = $man->move_and_rename(
         image          => $image,
         file_name_temp => 'renamed-%Y%m%d-%H%M%S',
@@ -666,8 +669,8 @@ sub _test_move_and_rename {
     my $self = shift;
     my $man = shift;
     my $image = $self->test_files->[0];
-
     my $src_path = $image->get_path;
+
     my ($op, $dst_path) = $man->move_and_rename(
         image          => $image,
         location_temp  => File::Spec->catfile( $self->temp_dir, 'dest/%Y.%m' ),
@@ -683,8 +686,8 @@ sub _test_src_eq_dest {
     my $self = shift;
     my $man = shift;
     my $image = $self->test_files->[1];
-
     my $src_path = $image->get_path;
+
     my ($op, $dst_path) = $man->move_and_rename( image => $image );
 
     return ($op, $src_path, $dst_path);
@@ -695,8 +698,8 @@ sub _test_same_file {
     my $self = shift;
     my $man = shift;
     my $image = $self->test_files->[1];
-
     my $src_path = $image->get_path;
+
     my ($op, $dst_path) = $man->move_and_rename(
         image          => $image,
         location_temp  => File::Spec->catfile( $self->temp_dir, 'src_copy'),
@@ -711,8 +714,8 @@ sub _test_diff_file {
     my $self = shift;
     my $man = shift;
     my $image = $self->test_files->[1];
-
     my $src_path = $image->get_path;
+
     my ($op, $dst_path) = $man->move_and_rename(
         image          => $image,
         file_name_temp => 'test',
@@ -727,8 +730,8 @@ sub _test_missing {
     my $self = shift;
     my $man = shift;
     my $image = $self->test_files->[2];
-
     my $src_path = $image->get_path;
+
     my ($op, $dst_path) = $man->move_and_rename(
         image          => $image,
         location_temp  => File::Spec->catfile( $self->temp_dir, 'dest/%Y.%m' ),
@@ -744,9 +747,13 @@ sub _test_error {
     my $self = shift;
     my $man = shift;
     my $image = $self->test_files->[0];
+    my $src_path = $image->get_path . '.bak';
 
-    my $src_path = $image->get_path;
-    move( $image->get_path, $image->get_path . ".bak" );  # Rename the file to cause an error.
+    # Cause the image metadata to be read so it will be cached while the path
+    # is valid, and move the file w/o using the tested interface to cause an
+    # error in moving.
+    $image->get_img_meta;
+    move( $image->get_path, $src_path );
     my ($op, $dst_path) = $man->move_and_rename(
         image          => $image,
         location_temp  => File::Spec->catfile( $self->temp_dir, 'error/%Y.%m' ),
@@ -768,7 +775,7 @@ sub _make_path : Tests {
     my $self = shift;
     my $man = $self->default_manager;
     my $image = $self->test_files->[0];
-    my $timestamp = $image->get_timestamp( 'CreateDate' );
+    my $timestamp = $image->get_exif_digitized;
     my $location_temp = '%Y/%m.%d';
     my $file_name_temp = 'img-%Y%m%d-%H%M%S';
     my $path;
@@ -819,7 +826,7 @@ sub _make_path : Tests {
         timestamp      => $timestamp,
         use_magic      => 1,
     );
-    is $path, File::Spec->catfile( $image->get_dir, $image->get_filename . '.jpeg' ),
+    is $path, File::Spec->catfile( $image->get_dir, $image->get_file_name . '.jpeg' ),
         "file extension should be correctly determined by the magic number";
 }
 

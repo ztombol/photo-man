@@ -29,7 +29,7 @@ use MooseX::FollowPBP;
 use namespace::autoclean;
 use Carp;
 
-use TCO::Image::File;
+use TCO::Image::File::Image;
 
 use File::Compare;
 use DateTime;
@@ -80,15 +80,11 @@ sub fix_timestamp {
     # Cache local timezone (retrival can be expensive).
     my $local_tz = DateTime::TimeZone->new( name => 'local' );
 
-    # TODO: Should we move this into a separate method on Image::File?
     # File system timestamp.
-    my $fs_mtime = DateTime->from_epoch(
-        epoch     => $image->get_fs_meta->mtime,
-        time_zone => $local_tz,
-    );
+    my $fs_mtime = $image->get_mtime;
 
     # EXIF creation timestamp.
-    my $img_mtime = $image->get_timestamp('CreateDate', $time_zone);
+    my $img_mtime = $image->get_exif_digitized( $time_zone );
     if ( ! defined $img_mtime ) {
         # EXIF DateTimeDigitized is not present in metadata (or could not be
         # parsed, which is less likely to happen though).
@@ -103,7 +99,7 @@ sub fix_timestamp {
 
             # Needs to be fixed.
             if ( $self->do_commit ) {
-                $status = $image->set_mod_time($img_mtime);
+                $status = $image->set_mtime( $img_mtime );
             }
             else {
                 $status = 0;
@@ -161,7 +157,7 @@ sub move_and_rename {
     my $new_file;
 
     # Retrieve timestamp for interpolation.
-    my $timestamp = $image->get_timestamp('CreateDate');
+    my $timestamp = $image->get_exif_digitized;
     if ( ! defined $timestamp ) {
         # EXIF DateTimeDigitized is not present in metadata (or could not be
         # parsed, which is less likely to happen though).
@@ -197,7 +193,7 @@ sub move_and_rename {
             if ( $cmp == 1 ) {
                # Target is different from Source. Can we overwrite?
                if ( $self->is_forced ) {
-                   # Overwrite file.
+                    # Overwrite file.
                     if ( $self->do_commit ) {
                         $status = $image->move_file( $new_file ) ? -1 : 1;
                     }
@@ -211,6 +207,8 @@ sub move_and_rename {
                 }
             }
             elsif ( $cmp == 0 ) {
+                # TODO: Should we remove the source, or overwrite the
+                #       destination when is_forced enabled?
                 # Source and Target are the same file. Nothing to do!
                 $status = 2;
             }
@@ -268,15 +266,15 @@ sub _make_path {
       : $image->get_dir;
 
     # File name without extension.
-    my $new_filename = ( defined $file_name_temp && $file_name_temp ne '' )
+    my $new_file_name = ( defined $file_name_temp && $file_name_temp ne '' )
       ? $self->_expand_template( $file_name_temp, $timestamp )
-      : $image->get_filename;
+      : $image->get_file_name;
 
     # Extension.
     my $new_extension = $image->get_extension( $use_magic );
 
     return File::Spec->catfile(
-        $new_location, $new_filename . '.' . $new_extension
+        $new_location, $new_file_name . '.' . $new_extension
     );
 }
 
