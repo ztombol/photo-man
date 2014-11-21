@@ -95,15 +95,11 @@ sub run {
     # Print column header.
     $class->print_header( %args );
 
-    # FIXME: globbing happens within the shell and complete path are handed to
-    #        the script. So globbing is not necessary here.
-    # Assemble pattern that will be used for globbing.
-    my $pattern = '{' . join(',', @argv) . '}';
-    while (my $file = glob("$pattern")) {
-    
+    # Instantiate Image objects.
+    foreach my $file ( @argv ) {
         # Load file.
         my $image = TCO::Image::File::Image->new( path => $file );
-        
+
         # Perform requested actions on file.
         $class->process_image(
             image   => $image,
@@ -333,7 +329,7 @@ sub out_move_and_rename {
 
         if ( $status >= 0 ) {
             $record->print( $new_path );
-    	}
+        }
     }
 }
 
