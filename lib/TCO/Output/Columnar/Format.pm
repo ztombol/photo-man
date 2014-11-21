@@ -468,7 +468,7 @@ sub _remove_last_stop {
     my $self = shift;
 
     if ( (@{$self->_get_fields}[-1])->get_type eq 'stop' ) {
-        pop $self->_get_fields;
+        pop @{$self->_get_fields};
     }
 }
 
