@@ -316,6 +316,7 @@ sub out_move_and_rename {
         : $status == 2 ? $record->print('same file at', $new_path)
         : $status == 3 ? sub { $record->print("already at");
                                $record->reset(); }->()
+        : $status == 4 ? $record->print('collision!', $new_path)
         : $status ==-1 ? croak "MOVE: error while moving file"
         : $status ==-2 ? $record->print('error!', 'missing timestamp')
         :                croak "MOVE: unhandled return value $status";
@@ -325,11 +326,12 @@ sub out_move_and_rename {
         : $status == 1 ? $record->print('over')
         : $status == 2 ? $record->print('same')
         : $status == 3 ? $record->print('there')
+        : $status == 4 ? $record->print('collide!')
         : $status ==-1 ? croak "MOVE: error while moving file"
         : $status ==-2 ? $record->print('error!', 'missing timestamp')
         :                croak "MOVE: unhandled return value $status";
 
-	if ( $status >= 0 ) {
+        if ( $status >= 0 ) {
             $record->print( $new_path );
     	}
     }

@@ -1,3 +1,6 @@
+v0.3.0 / 2014-10-20 / Squid
+
+    * [FIX] recognise colliding paths
 
 v0.2.0 / 2013-10-16 / Crab
 
@@ -8,7 +11,7 @@ v0.2.0 / 2013-10-16 / Crab
     * [ENHANCEMENT] major code clean-ups
     * [FIX] fix crash when `EXIF DateTimeDigitized` is missing
 
-v0.1.0 / 2013-08-30 / "Octopus"
+v0.1.0 / 2013-08-30 / Octopus
 
     * [FEATURE] move/rename based on `EXIF DateTimeDigitized`
     * [FEATURE] determine extension using magic number

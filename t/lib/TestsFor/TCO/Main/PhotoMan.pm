@@ -213,6 +213,10 @@ sub out_move_and_rename : Tests {
             out => [ "move\nalready at\n\n",
                      "output should be correct when file is aready at destination" ],
         }, {
+            in  => [ 4, 'new/path/img.jpeg' ],
+            out => [ "move\ncollision!\nnew/path/img.jpeg\n",
+                     "output should be correct when file is aready at destination" ],
+        }, {
             in  => [-2 ],
             out => [ "move\nerror!\nmissing timestamp\n",
                      "output should be correct when DateTimeDigitized is missing from metadata" ],

@@ -29,6 +29,7 @@ use MooseX::FollowPBP;
 use namespace::autoclean;
 use Carp;
 
+use TCO::Image::PhotoMan::Log;
 use TCO::Image::File::Image;
 
 use File::Compare;
@@ -52,6 +53,13 @@ has 'forced' => (
     isa     => 'Bool',
     default => 0,
     reader  => 'is_forced',
+);
+
+has 'log' => (
+    is      => 'ro',
+    isa     => 'TCO::Image::PhotoMan::Log',
+    default => sub { TCO::Image::PhotoMan::Log->new },
+    reader  => '_get_log',
 );
 
 # Sets the file system modification timestamp to the EXIF digitised timestamp
@@ -139,6 +147,7 @@ sub fix_timestamp {
 #           1, file at the destination overwritten
 #           2, another file already exists with the same path
 #           3, the file is already at the given path
+#           4, destination collides with that of another file
 sub move_and_rename {
     my $self = shift;
     my $args_ref;
@@ -174,8 +183,16 @@ sub move_and_rename {
         );
 
         # Attempt to move the file.
-        if ( ! -e $new_file ) {
+        if ( $self->_get_log->does_file_exist( $new_file ) == 1 ) {
+            # Collision with another file moved in this run.
+            $status = 4;
+        }
+        elsif ( ! $self->_does_file_exist( $new_file ) ) {
             # Target file does not exists. Move the file!
+
+            # Log move operation.
+            $self->_get_log->move( $image->get_path, $new_file );
+
             if ( $self->do_commit ) {
                 $status = $image->move_file( $new_file ) ? -1 : 0;
             }
@@ -191,8 +208,12 @@ sub move_and_rename {
             # There exists a file at the Target already.
             my $cmp = compare( $image->get_path, $new_file );
             if ( $cmp == 1 ) {
-               # Target is different from Source. Can we overwrite?
-               if ( $self->is_forced ) {
+                # Target is different from Source. Can we overwrite?
+
+                # Log move operation.
+                $self->_get_log->move( $image->get_path, $new_file );
+
+                if ( $self->is_forced ) {
                     # Overwrite file.
                     if ( $self->do_commit ) {
                         $status = $image->move_file( $new_file ) ? -1 : 1;
@@ -212,6 +233,10 @@ sub move_and_rename {
                 # Source and Target are the same file. Nothing to do!
                 $status = 2;
             }
+            else {
+                # TODO: Handle File::Compare error (-1).
+                $status = -1
+            }
         }
     }
 
@@ -220,6 +245,27 @@ sub move_and_rename {
     #        operations
     return ($status, $new_file);
     #return $status;
+}
+
+# Checks if the given file exists or not. First the log is checked. If there is
+# no log entry for the file, the file system is checked.
+#
+# @param [in] $path  path of file to look for
+#
+# @returns  1, if file exists
+#           0, otherwise
+sub _does_file_exist {
+    my $self = shift;
+    my $path = shift;
+
+    # If the path is logged, return the logged state.
+    if ( ( my $status = $self->_get_log->does_file_exist( $path ) ) != -1 ) {
+        return $status;
+    }
+
+    # If the path is not in the log it has not been moved from/to so the file
+    # system contains the answer.
+    return -e $path ? 1 : 0;
 }
 
 # Creates a path string by replacing parts of the location (directory) and

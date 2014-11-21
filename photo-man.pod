@@ -243,18 +243,6 @@ Display complete documentation and exit.
 Bug reports can be submitted via B<photo-man>'s issue tracker on GitHub at
 <https://github.com/ztombol/photo-man/issues>.
 
-=head2 Known bugs
-
-When moving and/or renaming multiple files, B<photo-man> in non-commit mode can
-not yet warn you if more than one file's new path resolves to the same, i.e. a
-situation that can result in data loss if not careful.
-In commit mode the collisions are reported correctly and the first one
-processed among the conflicting files will be moved and/or renamed, while the
-rest will be skipped avoiding data loss (non conflicting files will be
-processed as usual).
-Data loss is expected only in commit and forced mode when the file processed last
-will overwrite the rest of the colliding files.
-
 =head1 COPYRIGHT
 
 B<photo-man>, including test assets such as image files, and this manual is

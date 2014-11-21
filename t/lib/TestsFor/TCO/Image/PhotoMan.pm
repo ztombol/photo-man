@@ -313,6 +313,12 @@ sub _timestamp_error {
 #    diff file  - / 2,p / e:e   - / 2,p / e:e   - / 1,p / e:e   o / 1,p / n:e
 #        error  - / 0,p / -:n   - /-1,p / -:-   - / 0,p / -:n   - /-1,p / -:-
 #      missing  - /-2,u / e:-   - /-2,u / e:-   - /-2,u / e:-   - /-2,u / e:-
+#    collision  - / 4,p / e:n   - / 4,p / e:e   - / 4,p / e:n   - / 4,p / e:e
+#        TODO: Test for the case when a file is moved in non-commit mode, so it
+#              is recorded in the log but still present in the file system at
+#              its original path. In this case we should get an "Okay, moved!"
+#              answer.
+#        TODO: Should collisions result in overwrites when in Forced mode?
 #
 # The outcome is specified as:
 #     action / returned list of values / source status:destination status
@@ -333,56 +339,80 @@ sub _timestamp_error {
 #     n does not exist
 #
 
+# Prints configuration in a diag message.
+#
+# @param [in] self  self
+# @param [in] config  configuration to print
+sub _diag_config {
+    my ($self, %config) = @_;
+
+    diag 'Using ' . ( $config{ commit } ? 'COMMIT' : 'NON-COMMIT' )
+       . ' and '  . ( $config{ forced } ? 'FORCED' : 'NON-FORCED' )
+       . ' mode manager';
+}
+
 # Move and rename in NON-COMMIT and NON-FORCED mode.
 sub move_and_rename_nc_nf : Tests {
     my $self = shift;
-    my $man = $self->class_to_test->new( commit => 0, forced => 0 );
+    my %config = ( commit => 0, forced => 0 );
 
-    diag 'Using NON-COMMIT and NON-FORCED mode manager';
-    
-    $self->_test_move_and_rename_nc( $man );
-    $self->_test_diff_file_nf( $man );
-    $self->_test_error_nc( $man );
-    $self->_test_common( $man );
+    # Print tested configuration.
+    $self->_diag_config( %config );
+
+    # Run tests.
+    $self->_test_move_and_rename_nc( %config );
+    $self->_test_diff_file_nf( %config );
+    $self->_test_collision_nc( %config );
+    $self->_test_common( %config );
+    $self->_test_error_nc( %config );
 }
 
 # Move and rename in NON-COMMIT and FORCED mode.
 sub move_and_rename_nc_f : Tests {
     my $self = shift;
-    my $man = $self->class_to_test->new( commit => 0, forced => 1 );
+    my %config = ( commit => 0, forced => 1 );
 
-    diag 'Using NON-COMMIT and FORCED mode manager';
-    
-    $self->_test_move_and_rename_nc( $man );
-    $self->_test_diff_file_nc_f( $man );
-    $self->_test_error_nc( $man );
-    $self->_test_common( $man );
+    # Print tested configuration.
+    $self->_diag_config( %config );
+
+    # Run tests.
+    $self->_test_move_and_rename_nc( %config );
+    $self->_test_diff_file_nc_f( %config );
+    $self->_test_collision_nc( %config );
+    $self->_test_common( %config );
+    $self->_test_error_nc( %config );
 }
 
 # Move and rename in COMMIT and NON-FORCED mode.
 sub move_and_rename_c_nf : Tests {
     my $self = shift;
-    my $man = $self->class_to_test->new( commit => 1, forced => 0 );
+    my %config = ( commit => 1, forced => 0 );
 
-    diag 'Using COMMIT and NON-FORCED mode manager';
-    
-    $self->_test_move_and_rename_c( $man );
-    $self->_test_diff_file_nf( $man );
-    $self->_test_error_c( $man );
-    $self->_test_common( $man );
+    # Print tested configuration.
+    $self->_diag_config( %config );
+
+    # Run tests.
+    $self->_test_move_and_rename_c( %config );
+    $self->_test_diff_file_nf( %config );
+    $self->_test_collision_c( %config );
+    $self->_test_common( %config );
+    $self->_test_error_c( %config );
 }
 
 # Move and rename in COMMIT and FORCED mode.
 sub move_and_rename_c_f : Tests {
     my $self = shift;
-    my $man = $self->class_to_test->new( commit => 1, forced => 1 );
+    my %config = ( commit => 1, forced => 1 );
 
-    diag 'Using COMMIT and FORCED mode manager';
-    
-    $self->_test_move_and_rename_c( $man );
-    $self->_test_diff_file_c_f( $man );
-    $self->_test_error_c( $man );
-    $self->_test_common( $man );
+    # Print tested configuration.
+    $self->_diag_config( %config );
+
+    # Run tests.
+    $self->_test_move_and_rename_c( %config );
+    $self->_test_diff_file_c_f( %config );
+    $self->_test_collision_c( %config );
+    $self->_test_common( %config );
+    $self->_test_error_c( %config );
 }
 
 #
@@ -394,14 +424,15 @@ sub move_and_rename_c_f : Tests {
 #   - rename only
 #   - move and rename
 #
-# @param [in] self  test class
-# @param [in] man   manager to test
+# @param [in] self    test class
+# @param [in] config  configuration to test
 sub _test_move_and_rename_nc {
-    my $self = shift;
-    my $man = shift;
-    my ($op, $src_path, $dst_path);
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
 
-    croak 'Needs NON-COMMIT mode manager' unless ( ! $man->do_commit );
+    # Instantiate manager.
+    croak 'Needs NON-COMMIT mode manager' unless ( ! $config{ do_commit } );
+    $man = $self->class_to_test->new( %config );
 
     # Move [0]
     ($op, $src_path, $dst_path) = $self->_test_move_only( $man );
@@ -436,14 +467,15 @@ sub _test_move_and_rename_nc {
 #   - rename only
 #   - move and rename
 #
-# @param [in] self  test class
-# @param [in] man   manager to test
+# @param [in] self    test class
+# @param [in] config  configuration to test
 sub _test_move_and_rename_c {
-    my $self = shift;
-    my $man = shift;
-    my ($op, $src_path, $dst_path);
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
 
-    croak 'Needs COMMIT mode manager' unless ( $man->do_commit );
+    # Instantiate manager.
+    croak 'Needs COMMIT mode manager' unless ( $config{ commit } );
+    $man = $self->class_to_test->new( %config );
 
     # Move [0]
     ($op, $src_path, $dst_path) = $self->_test_move_only( $man );
@@ -476,14 +508,15 @@ sub _test_move_and_rename_c {
 # NON-FORCED mode:
 #   - a different file is already at the destination
 #
-# @param [in] self  test class
-# @param [in] man   manager to test
+# @param [in] self    test class
+# @param [in] config  configuration to test
 sub _test_diff_file_nf {
-    my $self = shift;
-    my $man = shift;
-    my ($op, $src_path, $dst_path);
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
 
-    croak 'Needs NON-FORCED mode manager' unless ( ! $man->is_forced );
+    # Instantiate manager.
+    croak 'Needs NON-FORCED mode manager' unless ( ! $config{ forced } );
+    $man = $self->class_to_test->new( %config );
 
     # Move [1]
     ($op, $src_path, $dst_path) = $self->_test_diff_file( $man );
@@ -498,14 +531,15 @@ sub _test_diff_file_nf {
 # NON-COMMIT and FORCED mode:
 #   - a different file is already at the destination
 #
-# @param [in] self  test class
-# @param [in] man   manager to test
+# @param [in] self    test class
+# @param [in] config  configuration to test
 sub _test_diff_file_nc_f {
-    my $self = shift;
-    my $man = shift;
-    my ($op, $src_path, $dst_path);
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
 
-    croak 'Needs NON-COMMIT and FORCED mode manager' unless ( ! $man->do_commit && $man->is_forced );
+    # Instantiate manager.
+    croak 'Needs NON-COMMIT and FORCED mode manager' unless ( ! $config{ commit } && $config{ forced } );
+    $man = $self->class_to_test->new( %config );
 
     # Move [1]
     ($op, $src_path, $dst_path) = $self->_test_diff_file( $man );
@@ -520,14 +554,15 @@ sub _test_diff_file_nc_f {
 # COMMIT and FORCED mode:
 #   - a different file is already at the destination
 #
-# @param [in] self  test class
-# @param [in] man   manager to test
+# @param [in] self    test class
+# @param [in] config  configuration to test
 sub _test_diff_file_c_f {
-    my $self = shift;
-    my $man = shift;
-    my ($op, $src_path, $dst_path);
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
 
-    croak 'Needs COMMIT and FORCED mode manager' unless ( $man->do_commit && $man->is_forced );
+    # Instantiate manager.
+    croak 'Needs COMMIT and FORCED mode manager' unless ( $config{ commit } && $config{ forced } );
+    $man = $self->class_to_test->new( %config );
 
     # Move [1]
     ($op, $src_path, $dst_path) = $self->_test_diff_file( $man );
@@ -542,14 +577,15 @@ sub _test_diff_file_c_f {
 # NON-COMMIT modes:
 #   - error while moving
 #
-# @param [in] self  test class
-# @param [in] man   manager to test
+# @param [in] self    test class
+# @param [in] config  configuration to test
 sub _test_error_nc {
-    my $self = shift;
-    my $man = shift;
-    my ($op, $src_path, $dst_path);
-    
-    croak 'Needs NON-COMMIT mode manager' unless ( ! $man->do_commit );
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
+
+    # Instantiate manager.
+    croak 'Needs NON-COMMIT mode manager' unless ( ! $config{ commit } );
+    $man = $self->class_to_test->new( %config );
     
     # Error moving [0]
     ($op, $src_path, $dst_path) = $self->_test_error( $man );
@@ -567,14 +603,15 @@ sub _test_error_nc {
 # COMMIT modes:
 #   - error while moving
 #
-# @param [in] self  test class
-# @param [in] man   manager to test
+# @param [in] self    test class
+# @param [in] config  configuration to test
 sub _test_error_c {
-    my $self = shift;
-    my $man = shift;
-    my ($op, $src_path, $dst_path);
-    
-    croak 'Needs COMMIT mode manager' unless ( $man->do_commit );
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
+
+    # Instantiate manager.
+    croak 'Needs COMMIT mode manager' unless ( $config{ commit } );
+    $man = $self->class_to_test->new( %config );
 
     # Error moving [0]
     ($op, $src_path, $dst_path) = $self->_test_error( $man );
@@ -589,17 +626,66 @@ sub _test_error_c {
         "... and the file should not be moved";
 }
 
+# NON-COMMIT mode:
+#   - colliding destinations
+#
+# @param [in] self    test class
+# @param [in] config  configuration to test
+sub _test_collision_nc {
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
+
+    # Instantiate manager.
+    croak 'Needs NON-COMMIT mode manager' unless ( ! $config{ do_commit } );
+    $man = $self->class_to_test->new( %config );
+
+    # Colliding destinations.
+    ($op, $src_path, $dst_path) = $self->_test_collision( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 4,  $self->temp_dir . '/collide/img.jpeg' ],
+        "trying to move when the destination collides with another file moved in this run should return 4 and the intended path";
+    ok -e $src_path && ! -e $dst_path,
+        "... and nothing should be done";
+}
+
+# COMMIT mode:
+#   - colliding destinations
+#
+# @param [in] self    test class
+# @param [in] config  configuration to test
+sub _test_collision_c {
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
+
+    # Instantiate manager.
+    croak 'Needs COMMIT mode manager' unless ( $config{ commit } );
+    $man = $self->class_to_test->new( %config );
+
+    # Colliding destinations.
+    ($op, $src_path, $dst_path) = $self->_test_collision( $man );
+    eq_or_diff
+        [ $op, $dst_path ],
+        [ 4,  $self->temp_dir . '/collide/img.jpeg' ],
+        "trying to move when the destination collides with another file moved in this run should return 4 and the intended path";
+    ok -e $src_path && -e $dst_path,
+        "... and nothing should be done";
+}
+
 # ALL modes:
 #   - source and destination path are the same
 #   - the same file is already at the destination
 #   - timestamp missing
+#   - colliding destination
 #
-# @param [in] self  test class
-# @param [in] man   manager to test
+# @param [in] self    test class
+# @param [in] config  configuration to test
 sub _test_common {
-    my $self = shift;
-    my $man = shift;
-    my ($op, $src_path, $dst_path);
+    my ($self, %config) = @_;
+    my ($man, $op, $src_path, $dst_path);
+
+    # Instantiate manager.
+    $man = $self->class_to_test->new( %config );
 
     # Source equals destination.
     ($op, $src_path, $dst_path) = $self->_test_src_eq_dest( $man );
@@ -766,6 +852,26 @@ sub _test_error {
     return ($op, $src_path, $dst_path);
 }
 
+# Colliding destinations: test_files->[0] => collide/img.jpeg [OK]
+#                         test_files->[1] => collide/img.jpeg [COLLISION]
+sub _test_collision {
+    my $self = shift;
+    my $man = shift;
+    my $src_path = $self->test_files->[1]->get_path;
+
+    my ($op, $dst_path);
+    foreach my $image ( $self->test_files->[0], $self->test_files->[1] ) {
+        ($op, $dst_path) = $man->move_and_rename(
+            image          => $image,
+            location_temp  => File::Spec->catfile( $self->temp_dir, 'collide' ),
+            file_name_temp => 'img',
+            use_magic      => 1,
+        );
+    }
+
+    return ($op, $src_path, $dst_path);
+}
+
 #
 # Other LOW-level subroutine tests.
 #
@@ -828,6 +934,33 @@ sub _make_path : Tests {
     );
     is $path, File::Spec->catfile( $image->get_dir, $image->get_file_name . '.jpeg' ),
         "file extension should be correctly determined by the magic number";
+}
+
+# Checking if a file exists after a move operation in NON-COMMIT mode.
+#
+# After moving file 'a', moving file 'b' to the path of 'a' should succeed
+# without reporting overwriting or another file at the destination.
+sub _does_file_exist : Tests {
+    my $self = shift;
+    my $image = $self->test_files->[1];
+    my $src_path = $image->get_path;
+    my $man = $self->class_to_test->new(
+        commit => 0,
+    );
+
+    # FS checks.
+    is $man->_does_file_exist( $src_path ), 1,
+        "Querying the path of an existing file should return 1";
+    is $man->_does_file_exist( $src_path . 'does-not-exist' ), 0,
+        "Querying the path of a non-existent file should return 0";
+
+    # LOG checks.
+    my ($op, $dst_path) = $man->move_and_rename(
+        image          => $image,
+        file_name_temp => 'renamed',
+    );
+    is $man->_does_file_exist( $src_path ), 0,
+        "Querying the path of a file moved in non-commit mode should return 0 (from the log)";
 }
 
 1;
